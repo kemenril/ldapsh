@@ -1,0 +1,21 @@
+sub ads {
+	$CONNPARAMS->{SERVER}	= 'myadsserver';
+	$CONNPARAMS->{SSL}	= 0;
+	$CONNPARAMS->{PORT}	= 389;
+	$CONNPARAMS->{BINDDN}	= 'cn=Rafael Corvalan, ou=Users, ou=Switzerland, dc=linkvest, dc=com';
+	$CWD	    = 'dc=linkvest,dc=com';
+
+	connect;
+	bind;
+}
+
+sub unixldap {
+	$CONNPARAMS->{SERVER}	= 'ldap-2';
+	$CONNPARAMS->{SSL}	= 'ssl';
+	$CONNPARAMS->{PORT}	= 636;
+	$CONNPARAMS->{BINDDN}	= '';
+	$CWD	    = 'dc=linkvest,dc=com';
+
+	connect;
+	bind;
+}

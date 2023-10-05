@@ -1,0 +1,1002 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<title>ldapsh - Shell for an easy LDAP access and content changes</title>
+<link rel="stylesheet" href="ldapsh.css" type="text/css" />
+<link rev="made" href="mailto:root@localhost" />
+</head>
+
+<body>
+<table border="0" width="100%" cellspacing="0" cellpadding="3">
+<tr><td class="block" valign="middle">
+<big><strong><span class="block">&nbsp;ldapsh - Shell for an easy LDAP access and content changes</span></strong></big>
+</td></tr>
+</table>
+
+<p><a name="__index__"></a></p>
+<!-- INDEX BEGIN -->
+
+<ul>
+
+	<li><a href="#name">NAME</a></li>
+	<li><a href="#synopsis">SYNOPSIS</a></li>
+	<li><a href="#example">EXAMPLE</a></li>
+	<li><a href="#description">DESCRIPTION</a></li>
+	<ul>
+
+		<li><a href="#how_it_works">How it works</a></li>
+		<li><a href="#expansion_of_ldap_dns_and_filters">Expansion of LDAP DNs and Filters</a></li>
+		<li><a href="#redirection">REDIRECTION</a></li>
+	</ul>
+
+	<li><a href="#prerequisites">PREREQUISITES</a></li>
+	<li><a href="#commands">COMMANDS</a></li>
+	<ul>
+
+		<li><a href="#help_or_informational_commands">Help or informational commands</a></li>
+		<ul>
+
+			<li><a href="#which">which</a></li>
+			<li><a href="#help">help</a></li>
+			<li><a href="#version">version</a></li>
+			<li><a href="#set">set</a></li>
+		</ul>
+
+		<li><a href="#shell_or_ldap_server_connexion/disconnexion">Shell or LDAP Server Connexion/Disconnexion</a></li>
+		<ul>
+
+			<li><a href="#exit">exit</a></li>
+			<li><a href="#quit">quit</a></li>
+			<li><a href="#connect">connect</a></li>
+			<li><a href="#bind">bind</a></li>
+			<li><a href="#unbind">unbind</a></li>
+			<li><a href="#disconnect">disconnect</a></li>
+			<li><a href="#id">id</a></li>
+		</ul>
+
+		<li><a href="#utility_commands">Utility commands</a></li>
+		<ul>
+
+			<li><a href="#echo">echo</a></li>
+			<li><a href="#loadrc">loadrc</a></li>
+			<li><a href="#source">source</a></li>
+			<li><a href="#diff">diff</a></li>
+			<li><a href="#history">history</a></li>
+			<li><a href="#reset">reset</a></li>
+			<li><a href="#rdn">rdn</a></li>
+		</ul>
+
+		<li><a href="#current_working_directory_commands">``Current working directory'' commands</a></li>
+		<ul>
+
+			<li><a href="#cd">cd</a></li>
+			<li><a href="#setdn">setdn</a></li>
+			<li><a href="#acd">acd</a></li>
+			<li><a href="#pushd">pushd</a></li>
+			<li><a href="#popd">popd</a></li>
+			<li><a href="#dirs">dirs</a></li>
+			<li><a href="#pwd">pwd</a></li>
+		</ul>
+
+		<li><a href="#local_filesystem">Local filesystem</a></li>
+		<ul>
+
+			<li><a href="#lcd">lcd</a></li>
+			<li><a href="#lpwd">lpwd</a></li>
+		</ul>
+
+		<li><a href="#searchonly_commands">Search-only commands</a></li>
+		<ul>
+
+			<li><a href="#usearch">usearch</a></li>
+			<li><a href="#search">search</a></li>
+		</ul>
+
+		<li><a href="#output_entries">Output entries</a></li>
+		<ul>
+
+			<li><a href="#ldif">ldif</a></li>
+			<li><a href="#cat">cat</a></li>
+			<li><a href="#dump">dump</a></li>
+			<li><a href="#list">list</a></li>
+			<li><a href="#csv">csv</a></li>
+			<li><a href="#ls">ls</a></li>
+			<li><a href="#redir">redir</a></li>
+			<li><a href="#sink">sink</a></li>
+			<li><a href="#noredir">noredir</a></li>
+			<li><a href="#nosink">nosink</a></li>
+		</ul>
+
+		<li><a href="#changing_entries">Changing entries</a></li>
+		<ul>
+
+			<li><a href="#create">create</a></li>
+			<li><a href="#new">new</a></li>
+			<li><a href="#mkdir">mkdir</a></li>
+			<li><a href="#remove">remove</a></li>
+			<li><a href="#rm">rm</a></li>
+			<li><a href="#cp">cp</a></li>
+			<li><a href="#rename">rename</a></li>
+			<li><a href="#mv">mv</a></li>
+		</ul>
+
+		<li><a href="#changing_attributes">Changing attributes</a></li>
+		<ul>
+
+			<li><a href="#vi">vi</a></li>
+			<li><a href="#change">change</a></li>
+			<li><a href="#apply">apply</a></li>
+			<li><a href="#add">add</a></li>
+			<li><a href="#replace">replace</a></li>
+			<li><a href="#delete">delete</a></li>
+			<li><a href="#changes">changes</a></li>
+			<li><a href="#commit">commit</a></li>
+		</ul>
+
+		<li><a href="#$entries_manipulation">$ENTRIES manipulation</a></li>
+		<ul>
+
+			<li><a href="#nbentries">nbentries</a></li>
+			<li><a href="#append">append</a></li>
+			<li><a href="#noappend">noappend</a></li>
+			<li><a href="#exclude">exclude</a></li>
+		</ul>
+
+	</ul>
+
+	<li><a href="#files">FILES</a></li>
+	<li><a href="#variables">VARIABLES</a></li>
+	<ul>
+
+		<li><a href="#$columns">$COLUMNS</a></li>
+		<li><a href="#$connparams>{server}">$CONNPARAMS-&gt;{SERVER}</a></li>
+		<li><a href="#$connparams>{binddn}">$CONNPARAMS-&gt;{BINDDN}</a></li>
+		<li><a href="#$connparams>{port}">$CONNPARAMS-&gt;{PORT}</a></li>
+		<li><a href="#$connparams>{ldapversion}">$CONNPARAMS-&gt;{LDAPVERSION}</a></li>
+		<li><a href="#$connparams>{ssl}">$CONNPARAMS-&gt;{SSL}</a></li>
+		<li><a href="#$cwd">$CWD</a></li>
+		<li><a href="#$dnsep">$DNSEP</a></li>
+		<li><a href="#$editor">$EDITOR</a></li>
+		<li><a href="#$entries">$ENTRIES</a></li>
+		<li><a href="#$g">$G</a></li>
+		<li><a href="#$ldapconn">$LDAPCONN</a></li>
+		<li><a href="#$oldwd">$OLDWD</a></li>
+		<li><a href="#$prompt">$PROMPT</a></li>
+	</ul>
+
+	<li><a href="#see_also">SEE ALSO</a></li>
+	<li><a href="#authors">AUTHORS</a></li>
+	<li><a href="#feedback">FEEDBACK</a></li>
+	<li><a href="#copyright">COPYRIGHT</a></li>
+</ul>
+<!-- INDEX END -->
+
+<hr />
+<p>
+</p>
+<h1><a name="name">NAME</a></h1>
+<p>ldapsh - Shell for an easy LDAP access and content changes</p>
+<p>
+<a href="#__index__"><small>Back to Top</small></a>
+</p>
+<hr />
+<h1><a name="synopsis">SYNOPSIS</a></h1>
+<p>ldapsh [expression]</p>
+<p>
+<a href="#__index__"><small>Back to Top</small></a>
+</p>
+<hr />
+<h1><a name="example">EXAMPLE</a></h1>
+<p>For readability reasons, the example can only be viewed on the HTML version
+of the documentation (use the <strong>pod2html</strong> command).</p>
+<pre>    bash-prompt> ldapsh>
+    [LDAP @ ]  > ads
+    Password > ***********
+    [LDAP @ adsserver] dc=linkvest,dc=com > ls
+    OU=France
+    OU=Switzerland
+    -----
+    2 entries found
+    [LDAP @ adsserver] dc=linkvest,dc=com > cd ou=Switzerland,ou=Users
+    [LDAP @ adsserver] ou=Users,ou=Switzerland,dc=linkvest,dc=com > search 'department=*'
+    95 entries found
+    [LDAP @ adsserver] ou=Users,ou=Switzerland,dc=linkvest,dc=com > apply {$_->replace('department', ['New Dept']) if $_->get_value('department') =~ /CCSR/}
+    [LDAP @ adsserver] ou=Users,ou=Switzerland,dc=linkvest,dc=com > changes
+    ========================================
+    CN=Test user 1,OU=Users,OU=Switzerland,DC=linkvest,DC=com
+            >>> Replace attribute 'department' with values: 'New Dept'
+    ========================================
+    CN=Test user 2,OU=Users,OU=Switzerland,DC=linkvest,DC=com
+            >>> Replace attribute 'department' with values: 'New Dept'
+    ========================================
+    CN=Test user 3,OU=Users,OU=Switzerland,DC=linkvest,DC=com
+            >>> Replace attribute 'department' with values: 'New Dept'
+    ========================================
+    CN=Test user 4,OU=Users,OU=Switzerland,DC=linkvest,DC=com
+            >>> Replace attribute 'department' with values: 'New Dept'
+    ========================================
+    CN=Test user 5,OU=Users,OU=Switzerland,DC=linkvest,DC=com
+            >>> Replace attribute 'department' with values: 'New Dept'
+    ========================================
+    CN=Test user 6,OU=Users,OU=Switzerland,DC=linkvest,DC=com
+            >>> Replace attribute 'department' with values: 'New Dept'
+    ========================================
+    6 entries to commit
+    [LDAP @ adsserver] ou=Users,ou=Switzerland,dc=linkvest,dc=com > commit
+    Changed 6 entries of 95. 0 errors.
+    [LDAP @ adsserver] ou=Users,ou=Switzerland,dc=linkvest,dc=com > quit
+    bash-prompt></pre><p>
+<a href="#__index__"><small>Back to Top</small></a>
+</p>
+<hr />
+<h1><a name="description">DESCRIPTION</a></h1>
+<p><strong>ldapsh</strong> is a shell that allows you to work in an interactive way with LDAP entries.
+Usually, system administrators use scripts (shell, <strong>perl</strong>, <strong>python</strong>...) to do massive changes
+or to take a look inside an LDAP directory. With this shell you can navigate through the
+directory almost as it it were a filesystem. You have a <em>current working directory</em>
+(<a href="#$cwd">$CWD</a>) and you enter <a href="#ls">ls</a> to list the entries in this ``directory''. You can change
+the <em>current working directory</em> using <a href="#cd">cd</a> and display an entry using <a href="#cat">cat</a>.</p>
+<p>
+</p>
+<h2><a name="how_it_works">How it works</a></h2>
+<p>If you have to remember only one thing, it is: This shell is simply a set
+of Perl functions and all you do is to call functions from a prompt.</p>
+<p>You can request help typing <a href="#help">help [&lt;command&gt;]</a> or, if you use
+<strong>Term::ReadLine::Gnu</strong>, you can type <code>&lt;CTRL-t&gt;</code> after a command
+to get help on it.</p>
+<p><strong>ldapsh</strong> includes a simple command-line interpreter. It can also make use of
+the optional <strong>Psh</strong> module for an enhanced user experience. This manual
+describes both interpreters as indicated by [ldapsh] and [Psh], respectively. Both
+interpreters facilitate evaluation of Perl expressions and you may use the
+<a href="#$g">$G</a> variable to store your own data.</p>
+<p>In this manual, command options are shown as <code>'-l',</code> to be compatible with the
+Perl <code>eval()</code> function. However, you do not usually need to type the
+apostrophes because <strong>ldapsh</strong> will insert them automatically. If you have
+<strong>Psh</strong> installed, you do not need to use commas, either.</p>
+<p>[ldapsh] Whatever you type at the prompt will either be:</p>
+<ul>
+<li><strong><a name="item_system">Executed in a <code>system()</code> call (if your entry starts with an exclamation mark).</a></strong><br />
+</li>
+<li><strong><a name="item_expression">Evaluated as a Perl expression (using <code>eval()</code>).</a></strong><br />
+</li>
+</ul>
+<p>For convenience, a few commands (such as <a href="#cd">cd</a>, <a href="#lcd">lcd</a> and <a href="#help">help</a>)
+automatically quote their arguments. Thus, you can type <code>cd ou=Users</code>
+instead of <code>cd &quot;ou=Users&quot;</code>.</p>
+<p>[Psh] What you type at the prompt will be passed through a number of handlers
+that facilitate a rich shell-like syntax. The order of precedence is:
+exclamation mark, brace, <strong>ldapsh</strong> commands, Perl functions, shell executables,
+Perl evaluation. Please note the following examples for correct quoting of
+strings, arrays, and hashes:</p>
+<ul>
+<li><strong><a name="item_correct">Correct (expands <a href="#$cwd">$CWD</a>): echo $CWD</a></strong><br />
+</li>
+<li><strong>Correct (expands <a href="#$cwd">$CWD</a>): echo ``$CWD''</strong><br />
+</li>
+<li><strong><a name="item_prints_%24cwd_literally%3a_echo_%27%24cwd%27">Prints <code>$CWD</code> literally: echo '$CWD'</a></strong><br />
+</li>
+<li><strong>Correct (expands <a href="#$entries">$ENTRIES</a>): ls $ENTRIES</strong><br />
+</li>
+<li><strong>Correct (expands <a href="#$entries">$ENTRIES</a>): nbentries $ENTRIES</strong><br />
+</li>
+<li><strong><a name="item_incorrect">Incorrect (converts array reference to a string): nbentries ``$ENTRIES''</a></strong><br />
+</li>
+<li><strong>Incorrect (does not expand the variable): nbentries '$ENTRIES'</strong><br />
+</li>
+<li><strong><a name="item_expands_%24env%7bpath%7d%3a_echo_%22%24env%7bpath%">Expands $ENV{PATH}: echo ``$ENV{PATH}''</a></strong><br />
+</li>
+<li><strong><a name="item_expands_%24env%7bpath%7d%3a_echo_%24env%5c%7bpath%">Expands $ENV{PATH}: echo $ENV\{PATH\}</a></strong><br />
+</li>
+<li><strong><a name="item_%24env_expanded_on_its_own%3a_echo_%24env%7bpath%7">$ENV expanded on its own: echo $ENV{PATH}</a></strong><br />
+</li>
+<li><strong><a name="item_prints_%24env%7bpath%7d_literally%3a_echo_%27%24en">Prints <code>$ENV{PATH}</code> literally: echo '$ENV{PATH}'</a></strong><br />
+</li>
+</ul>
+<p>
+</p>
+<h2><a name="expansion_of_ldap_dns_and_filters">Expansion of LDAP DNs and Filters</a></h2>
+<p>Almost every function that uses LDAP entries (<a href="#ls">ls</a>, <a href="#cat">cat</a>,
+<a href="#ldif">ldif</a>, <a href="#dump">dump</a>, etc...) has three syntaxes. Such functions are
+identified in the documentation with a usage like: <code>ls &lt;expansion&gt;</code></p>
+<p>The three syntaxes are:</p>
+<ol>
+<li><strong><a name="item_%3cfunction%3e_%5b%27%2dr%27%2c%5d_%24filter">&lt;function&gt; ['-r',] $filter</a></strong><br />
+</li>
+The filter used to perform a search. The scope is <em>one</em>, unless the <code>-r</code>
+argument is used, in which case the scope is <em>sub</em>. The base for the search
+is the <em>current working directory</em>.
+<p>The results of the search are put in the <a href="#$entries">$ENTRIES</a> array reference
+(composed of <strong>Net::LDAP::Entry</strong> entries).</p>
+<p></p>
+<li><strong><a name="item_%3cfunction%3e_%5b%27%2dr%27%7c%2e%5d">&lt;function&gt; ['-r'|.]</a></strong><br />
+</li>
+This is like the previous usage. The search filter is <code>(objectclass=*)</code>.
+<p>If neither <code>-r</code> nor the dot (a.k.a. ``full stop'' or ``period'') is given, the
+scope is <em>one</em>. If <code>-r</code> is given, the scope is <em>sub</em>. If the dot is
+given, the scope is <em>base</em> (this can be used to match the <em>current working
+directory</em> itself).</p>
+<p></p>
+<li><strong><a name="item_%3cfunction%3e_%24entries">&lt;function&gt; $entries</a></strong><br />
+</li>
+You can give some <strong>Net::LDAP::Entry</strong> objects in an array reference.
+With this syntax, no search is done.
+<p></p></ol>
+<p>
+</p>
+<h2><a name="redirection">REDIRECTION</a></h2>
+<p>By default, LDAP results are displayed on the ``standard output'' while
+diagnostic messages are printed to the ``standard error''.</p>
+<p>You may redirect search results using the <a href="#redir">redir</a> command. This will
+stay in effect until <a href="#noredir">noredir</a> is called.</p>
+<p>[Psh] Psh allows you to use standard shell symbols such as ``|'' (for piping)
+and ``&gt;'' (for output redirection).</p>
+<p>[ldapsh] Alternatively, you can use a special shell syntax which will have only a
+temporary effect. The special syntax is appending ``; | ...'' to your command,
+where ``...'' is a parameter to the <code>open</code> function.</p>
+<p>For example:</p>
+<pre>
+        ldapsh&gt; redir '|awk &quot;/Smith/{print}&quot;'
+        ldapsh&gt; cat
+        cn: Jack Smith
+        sn: Smith
+        cn: Jill Smith
+        sn: Smith
+        ldapsh&gt; version;|cat
+        LDAP Shell (ldapsh) by Rafael Corvalan.
+        ldapsh&gt; cat
+        cn: Jack Smith
+        sn: Smith
+        cn: Jill Smith
+        sn: Smith
+        ldapsh&gt; noredir</pre>
+<p>
+<a href="#__index__"><small>Back to Top</small></a>
+</p>
+<hr />
+<h1><a name="prerequisites">PREREQUISITES</a></h1>
+<p><strong>ldapsh</strong> uses the following Perl modules:</p>
+<ul>
+<li><strong><a name="item_data%3a%3adumper"><strong>Data::Dumper</strong></a></strong><br />
+</li>
+<li><strong><a name="item_devel%3a%3asymdump"><strong>Devel::Symdump</strong></a></strong><br />
+</li>
+<li><strong><a name="item_file%3a%3atemp"><strong>File::Temp</strong></a></strong><br />
+</li>
+<li><strong><a name="item_getopt%3a%3along"><strong>Getopt::Long</strong></a></strong><br />
+</li>
+<li><strong><a name="item_net%3a%3aldap"><strong>Net::LDAP</strong></a></strong><br />
+</li>
+<li><strong><a name="item_pod"><strong>Pod</strong></a></strong><br />
+</li>
+<li><strong><a name="item_term%3a%3areadline"><strong>Term::ReadLine</strong></a></strong><br />
+</li>
+</ul>
+<p><strong>ldapsh</strong> can benefit from the following Perl modules:</p>
+<ul>
+<li><strong><a name="item_net%3a%3aldaps"><strong>Net::LDAPS</strong></a></strong><br />
+</li>
+<li><strong><a name="item_posix%3a%3atermios"><strong>POSIX::Termios</strong></a></strong><br />
+</li>
+<li><strong><a name="item_psh"><strong>Psh</strong></a></strong><br />
+</li>
+<li><strong><a name="item_term%3a%3areadkey"><strong>Term::ReadKey</strong></a></strong><br />
+</li>
+<li><strong><a name="item_term%3a%3areadline%3a%3agnu"><strong>Term::ReadLine::Gnu</strong></a></strong><br />
+</li>
+<li><strong><a name="item_term%3a%3asize"><strong>Term::Size</strong></a></strong><br />
+</li>
+</ul>
+<p>
+<a href="#__index__"><small>Back to Top</small></a>
+</p>
+<hr />
+<h1><a name="commands">COMMANDS</a></h1>
+<p>
+</p>
+<h2><a name="help_or_informational_commands">Help or informational commands</a></h2>
+<p>
+</p>
+<h3><a name="which">which</a></h3>
+<p><strong>Synopsis</strong>: <code>which '&lt;command&gt;'</code></p>
+<p>A synonym for <a href="#help">help &lt;command&gt;</a>.</p>
+<p>
+</p>
+<h3><a name="help">help</a></h3>
+<p><strong>Synopsis</strong>: <code>help ['&lt;command&gt;'|'all']</code></p>
+<p>Display help about the given command (or global help, if 'all' is given).
+If no parameter is given, a summary of commands will be shown.</p>
+<p>
+</p>
+<h3><a name="version">version</a></h3>
+<p>Display the version of the LDAP Shell you're using.</p>
+<p>
+</p>
+<h3><a name="set">set</a></h3>
+<p><strong>Synopsis</strong>: <code>set ['-a']</code></p>
+<p>Display the names and values of the global variables you can set. The purpose of this function is to help the user to remember the names of the variables he can set. The <code>-a</code> parameter allows read-only values to be seen.</p>
+<p>
+</p>
+<h2><a name="shell_or_ldap_server_connexion/disconnexion">Shell or LDAP Server Connexion/Disconnexion</a></h2>
+<p>
+</p>
+<h3><a name="exit">exit</a></h3>
+<p>Save the history and quits the shell.</p>
+<p>
+</p>
+<h3><a name="quit">quit</a></h3>
+<p>A synonym for <a href="#exit">exit</a>.</p>
+<p>
+</p>
+<h3><a name="connect">connect</a></h3>
+<p><strong>Synopsis</strong>: <code>connect [$server]</code></p>
+<p>Connect to an LDAP Server. If no server name is given, one is taken from <code>$CONNPARAMS-&gt;{SERVER}</code> (see <a href="#variables">Variables</a> and the <a href="#set">set</a> command).</p>
+<p>
+</p>
+<h3><a name="bind">bind</a></h3>
+<p><strong>Synopsis</strong>: <code>bind [$binddn]</code></p>
+<p>Bind to the LDAP Server. Connects first, if not connected. If no <code>$binddn</code> is given, the <a href="#bind">bind</a> command uses <code>$CONNPARAMS-&gt;{BINDDN}</code>. If this variable is empty, binding will be anonymous.</p>
+<p>
+</p>
+<h3><a name="unbind">unbind</a></h3>
+<p>Unbind from the LDAP Server. The connection is invalid after an unbind. If you would like to rebind using a new DN, just do a new <a href="#bind">bind</a> without unbinding.</p>
+<p>
+</p>
+<h3><a name="disconnect">disconnect</a></h3>
+<p>A synonym for <a href="#unbind">unbind</a>.</p>
+<p>
+</p>
+<h3><a name="id">id</a></h3>
+<p>Display the DN used to bind. The value is one of:</p>
+<ul>
+<li><strong><a name="item_bound">'Not bound', if not bound (even anonymously)</a></strong><br />
+</li>
+<li><strong><a name="item_%27bound_anonymously%27_if_bound_anonymously">'Bound anonymously' if bound anonymously</a></strong><br />
+</li>
+<li><strong><a name="item_%27bound_as%27_the_dn_of_an_authenticated_user">'Bound as' the DN of an authenticated user</a></strong><br />
+</li>
+</ul>
+<p>
+</p>
+<h2><a name="utility_commands">Utility commands</a></h2>
+<p>
+</p>
+<h3><a name="echo">echo</a></h3>
+<p><strong>Synopsis</strong>: <code>echo @list</code></p>
+<p>Display each item in the list, appending a carriage return after each item.</p>
+<p>Example: <code>echo scalar(@$ENTRIES)</code></p>
+<p>
+</p>
+<h3><a name="loadrc">loadrc</a></h3>
+<p><strong>Synopsis</strong>: <code>loadrc [&lt;file&gt;]</code></p>
+<p>Load and ``run'' the Perl file &lt;file&gt; using the <code>do</code> Perl function. If no filename is given, <strong>ldapsh</strong> tries to load <a href="#item_%7e%2f%2eldapshrc"><code>~/.ldapshrc</code></a>.</p>
+<p>
+</p>
+<h3><a name="source">source</a></h3>
+<p><strong>Synopsis</strong>: <code>source &lt;file&gt;</code></p>
+<p>A synonym for <code>loadrc &lt;file&gt;</code>.</p>
+<p>
+</p>
+<h3><a name="diff">diff</a></h3>
+<p>TODO</p>
+<p>
+</p>
+<h3><a name="history">history</a></h3>
+<p><strong>Synopsis</strong>: <code>history</code></p>
+<p>Print out each line of the command-line history, if <strong>Term::ReadLine::Gnu</strong> is available.</p>
+<p>
+</p>
+<h3><a name="reset">reset</a></h3>
+<p>Reset the <strong>Term::ReadLine</strong> status.</p>
+<p>
+</p>
+<h3><a name="rdn">rdn</a></h3>
+<p><strong>Synopsis</strong>: <code>rdn '&lt;DN&gt;'</code></p>
+<p>Return (but do not print) the RDN of the DN that was given as a string argument.</p>
+<p>
+</p>
+<h2><a name="current_working_directory_commands">``Current working directory'' commands</a></h2>
+<p>
+</p>
+<h3><a name="cd">cd</a></h3>
+<p><strong>Synopsis</strong>: <code>cd ['&lt;RDN&gt;' | '&lt;foo&gt;', '&lt;bar&gt;' | '-']</code></p>
+<p>Change the <em>current working directory</em> to the specified RDN.
+You can specify multiple RDNs separated by commas (in the reverse order of the DN, to allow completion).
+You can also specify <code>..</code> to go to the parent DN.
+If no RDN is specified, the <em>current working directory</em> is not changed.</p>
+<p>If <code>-</code> is specified, <a href="#$oldwd">$OLDWD</a> is swapped with the <em>current working directory</em>.</p>
+<p>If <code>foo</code> and <code>bar</code> are specified, <code>bar</code> will be substituted for <code>foo</code>
+in the <em>current working directory</em> and the result will be used to
+invoke <a href="#setdn">setdn</a>. If <code>foo</code> was not present in <a href="#$cwd">$CWD</a>,
+the <em>current working directory</em> is not changed.</p>
+<p>See also the <a href="#acd">acd</a>, <a href="#setdn">setdn</a>, <a href="#pushd">pushd</a> and <a href="#popd">popd</a> commands.</p>
+<p>
+</p>
+<h3><a name="setdn">setdn</a></h3>
+<p><strong>Synopsis</strong>: <code>setdn '&lt;DN&gt;'</code></p>
+<p>Change the current directory to the specified DN. Unlike the <a href="#cd">cd</a> command, the argument is a <strong>DN</strong>, not an <strong>RDN</strong>. This command has a synonym named <a href="#acd">acd</a>.</p>
+<p>
+</p>
+<h3><a name="acd">acd</a></h3>
+<p><strong>Synopsis</strong>: <code>acd '&lt;DN&gt;'</code></p>
+<p>A synonym for <a href="#setdn">setdn</a>. (The name is an abbreviaton of ``<strong>a</strong>bsolute <strong>cd</strong>''.)</p>
+<p>
+</p>
+<h3><a name="pushd">pushd</a></h3>
+<p><strong>Synopsis</strong>: <code>pushd ['&lt;RDN&gt;' | '&lt;foo&gt;', '&lt;bar&gt;' | '-']</code></p>
+<p>Perform the same action as the <a href="#cd">cd</a> command. If the action succeeds, the old working directory is stored on a stack (which can be shown using <a href="#dirs">dirs</a>). It can be restored using <a href="#popd">popd</a>.</p>
+<p>If no RDN is given, the <em>current working directory</em> will be pushed onto the stack.</p>
+<p>
+</p>
+<h3><a name="popd">popd</a></h3>
+<p><strong>Synopsis</strong>: <code>popd</code></p>
+<p>Pop a directory from the directory stack (see <a href="#pushd">pushd</a>) and change the <em>current working directory</em> to the popped directory.</p>
+<p>
+</p>
+<h3><a name="dirs">dirs</a></h3>
+<p><strong>Synopsis</strong>: <code>dirs</code></p>
+<p>Show the directory stack (see <a href="#pushd">pushd</a> and <a href="#popd">popd</a>).</p>
+<p>
+</p>
+<h3><a name="pwd">pwd</a></h3>
+<p>Display the <em>current working directory</em>.</p>
+<p>
+</p>
+<h2><a name="local_filesystem">Local filesystem</a></h2>
+<p>
+</p>
+<h3><a name="lcd">lcd</a></h3>
+<p><strong>Synopsis</strong>: <code>lcd '&lt;localdir&gt;'</code></p>
+<p>Change the local (filesystem) working directory.</p>
+<p>
+</p>
+<h3><a name="lpwd">lpwd</a></h3>
+<p><strong>Synopsis</strong>: <code>lpwd '&lt;localdir&gt;'</code></p>
+<p>Display the name of the local (filesystem) working directory.</p>
+<p>
+</p>
+<h2><a name="searchonly_commands">Search-only commands</a></h2>
+<p>
+</p>
+<h3><a name="usearch">usearch</a></h3>
+<p><strong>Synopsis</strong>: <code>usearch '[/BaseDN][?[Attributes][?[Scope][?Filter]]]]'</code></p>
+<p>Search using an LDAP URL. The LDAP URL does not contain Host and Port since you must be connected and bound prior to running this command.</p>
+<p>The resulting entries are stored in the <a href="#$entries">$ENTRIES</a> array reference.</p>
+<p>Returns a reference to an array containing the <strong>Net::LDAP::Entry</strong> objects found.</p>
+<p>
+</p>
+<h3><a name="search">search</a></h3>
+<p><strong>Synopsis</strong>: <code>search &lt;expansion&gt;</code></p>
+<p>Search for the entries matched by the expansion (see <a href="#expansion_of_ldap_dns_and_filters">Expansion</a>).
+Does not dump the entries themselves, only a summary of the search results.</p>
+<p>Returns a reference to an array containing the <strong>Net::LDAP::Entry</strong> objects found.</p>
+<p>
+</p>
+<h2><a name="output_entries">Output entries</a></h2>
+<p>
+</p>
+<h3><a name="ldif">ldif</a></h3>
+<p><strong>Synopsis</strong>: <code>ldif &lt;expansion&gt;</code></p>
+<p>Display the entries matched by the expansion (see <a href="#expansion_of_ldap_dns_and_filters">Expansion</a>) using the LDIF format.
+See also <a href="#cat">cat</a>.</p>
+<p>Returns a reference to an array containing the <strong>Net::LDAP::Entry</strong> objects found.</p>
+<p>
+</p>
+<h3><a name="cat">cat</a></h3>
+<p><strong>Synopsis</strong>: <code>cat &lt;expansion&gt;</code></p>
+<p>A synonym for <a href="#ldif">ldif</a>.</p>
+<p>
+</p>
+<h3><a name="dump">dump</a></h3>
+<p><strong>Synopsis</strong>: <code>dump &lt;expansion&gt;</code></p>
+<p>Dump the entries matched by the expansion (see <a href="#expansion_of_ldap_dns_and_filters">Expansion</a>) in a relatively human-readable format.</p>
+<p>
+</p>
+<h3><a name="list">list</a></h3>
+<p><strong>Synopsis</strong>: <code>list ['-a',] ['-dn',] &lt;expansion&gt;</code></p>
+<p>Display the attribute values of the entries matched by the expansion (see <a href="#expansion_of_ldap_dns_and_filters">Expansion</a>) in a list format (easy to parse).</p>
+<p>Arguments:</p>
+<ul>
+<li><strong><a name="item_%2da%3a_show_the_attribute_names"><code>-a</code>: Show the attribute names</a></strong><br />
+</li>
+<li><strong><a name="item_%2ddn%3a_show_the_dn"><code>-dn</code>: Show the DN</a></strong><br />
+</li>
+</ul>
+<p>
+</p>
+<h3><a name="csv">csv</a></h3>
+<p><strong>Synopsis</strong>: <code>csv [&lt;options&gt;,] &lt;expansion&gt;</code></p>
+<p>Display the entries matched by the expansion (see <a href="#expansion_of_ldap_dns_and_filters">Expansion</a>) in a CSV format.</p>
+<p>The first argument can be a list of options to tell how to format the file. If it's given, it's a hash reference.</p>
+<p><strong>Exemple</strong>: <code>csv -fs =&gt; &quot;\t&quot;, -dn, $ENTRIES</code></p>
+<p>The possible options are:</p>
+<ul>
+<li><strong><a name="item_%2dfs%3a_field_separator%2e_default%3a_%22%3b%22"><code>-fs</code>: Field Separator. Default: ``;''</a></strong><br />
+</li>
+<li><strong><a name="item_separator"><code>-vs</code>: Value separator (for multi-valued attributes). Default: ``|''</a></strong><br />
+</li>
+<li><strong><a name="item_%2dnomv%3a_for_multi%2dvalued_attributes%2c_show_o"><code>-nomv</code>: For multi-valued attributes, show only one attribute value.</a></strong><br />
+</li>
+<li><strong><a name="item_%2ddn%3a_output_the_dn_of_the_entries%2e"><code>-dn</code>: Output the DN of the entries.</a></strong><br />
+</li>
+</ul>
+<p>
+</p>
+<h3><a name="ls">ls</a></h3>
+<p><strong>Synopsis</strong>: <code>ls ['-C',|'-m',] ['-l',] &lt;expansion&gt;</code></p>
+<p>List the DNs of the entries matched by the expansion (see <a href="#expansion_of_ldap_dns_and_filters">Expansion</a>).
+Entries are displayed in the order received (no sorting is performed),
+with one entry per line.</p>
+<p>The <code>-C</code> argument requests multi-column output (the default is to print only one column per line).
+<strong>ldapsh</strong> uses as many columns as will fit into the character width of the terminal (see <a href="#$columns">$COLUMNS</a>).
+If <code>-m</code> is also specified, columns will be separated by <a href="#$dnsep">$DNSEP</a> (the default string is ``; '').
+The separator is omitted from the last entry on each line.</p>
+<p>The <code>-m</code> argument requests that all entries be printed on a single line,
+with entries separated by the <a href="#$dnsep">$DNSEP</a> string (the default string is ``; '').
+The separator appears after every entry (including the last one).</p>
+<p>
+</p>
+<h3><a name="redir">redir</a></h3>
+<p><strong>Synopsis</strong>: <code>redir ['&lt;spec&gt;']</code></p>
+<p>Redirect ldapsh's output. <code>spec</code> is used as a parameter to the <code>open</code>
+function, so you can specify, for example:</p>
+<ul>
+<li><strong><a name="item_redir_%27%3e_myfile%2eout%27"><code>redir '&gt; myfile.out'</code></a></strong><br />
+</li>
+<li><strong><a name="item_redir_%27%7c_grep_toto_%3e_myfile%2eout%27"><code>redir '| grep toto &gt; myfile.out'</code></a></strong><br />
+</li>
+<li><strong><a name="item_redir_%27%7c_more%27"><code>redir '| more'</code></a></strong><br />
+</li>
+</ul>
+<p>If no argument is given, the current redirection will be displayed.</p>
+<p>
+</p>
+<h3><a name="sink">sink</a></h3>
+<p><strong>Synopsis</strong>: <code>sink ['&lt;spec&gt;']</code></p>
+<p>A synonym for <code>redir ['&lt;spec&gt;']</code>.</p>
+<p>
+</p>
+<h3><a name="noredir">noredir</a></h3>
+<p><strong>Synopsis</strong>: <code>noredir</code></p>
+<p>No longer perform any of the redirections that were previously specified using <a href="#redir">redir</a>.</p>
+<p>
+</p>
+<h3><a name="nosink">nosink</a></h3>
+<p><strong>Synopsis</strong>: <code>nosink</code></p>
+<p>A synonym for <code>noredir]</code>.</p>
+<p>
+</p>
+<h2><a name="changing_entries">Changing entries</a></h2>
+<p>
+</p>
+<h3><a name="create">create</a></h3>
+<p><strong>Synopsis</strong>: <code>create ['-d',|'-k',|'-m',|'-n',|'-q',|'-v',] '&lt;RDN|DN&gt;' [,'&lt;objectclass&gt;' ...]</code></p>
+<p>Create a new LDIF file based on the specified distinguished named and object
+classes. By default, the LDIF file will be populated with attributes to comply
+with the schema supplied by the LDAP server. A text editor will then be invoked
+on the LDIF file. In the file is subsequently edited, a new LDAP entry will be
+created. Upon success, the LDIF file is deleted. Note: you must be sure to
+create a valid LDIF file from the template that is provided to you. If you do
+not, an entry cannot be created. If this error occurs, your invalid LDIF file
+will be preserved for your convenience.</p>
+<p>By default, the LDIF file is populated with all attributes specified in the schema
+('MUST' and 'MAY'). When the <code>-m</code> parameter is given, only 'MUST' attributes
+are included. The <code>-n</code> parameter prevents schema-based population.
+The <code>-q</code> parameter suppresses informational comments about each attribute
+while <code>-v</code> prints verbose information about each attribute.</p>
+<p>The <code>-k</code> parameter prevents deletion of the LDIF file (regardless of success),
+while <code>-d</code> forces deletion (regardless of failure).</p>
+<p>
+</p>
+<h3><a name="new">new</a></h3>
+<p>A synonym for <a href="#create">create</a>.</p>
+<p>
+</p>
+<h3><a name="mkdir">mkdir</a></h3>
+<p>A synonym for <a href="#create">create</a>.</p>
+<p>
+</p>
+<h3><a name="remove">remove</a></h3>
+<p><strong>Synopsis</strong>: <code>remove ['-a',] ['-f',] &lt;expansion&gt;</code></p>
+<p>Remove entries from the directory. Unless the <code>-f</code> parameter is given, the
+command will prompt you prior to starting and will stop if an error is
+encountered. You may specify <code>-r</code>, too, as a normal part of expansion (see
+<a href="#expansion_of_ldap_dns_and_filters">Expansion</a>). If <code>-a</code> is specified, an attempt will be made to
+delete leaf entries before their parent entries. Thus, to delete an entire
+subtree, you might try this:</p>
+<pre>
+  cd 'cn=Old Directory Subtree'
+  remove '-ar'
+  cd '-'</pre>
+<p>
+</p>
+<h3><a name="rm">rm</a></h3>
+<p>A synonym for <a href="#remove">remove</a>.</p>
+<p>
+</p>
+<h3><a name="cp">cp</a></h3>
+<p><strong>Synopsis</strong>: <code>cp '&lt;from-expansion&gt;'|'*' '&lt;to&gt;'</code></p>
+<p>Copy an entry to a new DN or copy a set of entries to new locations in the
+LDAP tree.</p>
+<p><code>from-expansion</code> will be expanded in the usual way 
+(see <a href="#expansion_of_ldap_dns_and_filters">Expansion</a>), with the addition that <code>*</code> corresponds to 
+the filter <code>(objectclass=*)</code>.</p>
+<p>If the <code>to</code> parameter is an RDN, a single object will be copied to a new RDN within 
+the same level of the LDAP tree, and you will get an error if <code>from-expansion</code>
+expands to more than one object.</p>
+<p>If <code>to</code> is a DN, all the objects from <code>from-expansion</code> will be be copied to
+the new location, using <code>to</code> as a base DN and retaining their old RDNs.
+This makes it convenient to copy many objects.</p>
+<p><strong>TODO</strong>: With <code>to</code> being a DN, we may want to copy entire subtrees.
+Currently we only copy objects as leaves.</p>
+<p>
+</p>
+<h3><a name="rename">rename</a></h3>
+<p><strong>Synopsis</strong>: <code>rename '&lt;from-expansion&gt;'|'*' '&lt;to&gt;'</code></p>
+<p>Rename an entry with a new RDN or move a set of entries to new locations in the
+LDAP tree.</p>
+<p><code>from-expansion</code> will be expanded in the usual way 
+(see <a href="#expansion_of_ldap_dns_and_filters">Expansion</a>), with the addition that <code>*</code> corresponds to 
+the filter <code>(objectclass=*)</code>.</p>
+<p>If your directory server does not allow subtrees to be moved, you may have to
+copy entries to a new location and then remove the old subtree (see <a href="#cp">cp</a>
+and <a href="#remove">remove</a>).</p>
+<p>
+</p>
+<h3><a name="mv">mv</a></h3>
+<p>A synonym for <a href="#rename">rename</a>.</p>
+<p>
+</p>
+<h2><a name="changing_attributes">Changing attributes</a></h2>
+<p>
+</p>
+<h3><a name="vi">vi</a></h3>
+<p><strong>Synopsis</strong>: <code>vi &lt;expansion&gt;</code></p>
+<p>Show the entries matched by the expansion (see <a href="#expansion_of_ldap_dns_and_filters">Expansion</a>) in a text editor.
+Entries are saved to a temporary file for editing in the LDIF format.
+If the temporary file is modified, it will be re-read as an LDIF file and used to modify
+the search results. Any changes can be viewed using <a href="#changes">changes</a> and will need to
+be committed using <a href="#commit">commit</a>.
+BUG (TODO): If you add an attribute to an entry (so, if you add a value to an attribute
+that hadn't previously a value), it will not be detected. We should do a two-way check.</p>
+<p>
+</p>
+<h3><a name="change">change</a></h3>
+<p>A synonym for <a href="#apply">apply</a>.</p>
+<p>
+</p>
+<h3><a name="apply">apply</a></h3>
+<p><strong>Synopsis</strong>: <code>apply {&lt;your code&gt;} [$entries]</code></p>
+<p>Apply some code to the local copies of the LDAP entries.
+You can use the variable <code>$_</code> in your code (it will refer to an <strong>Net::LDAP::Entry</strong> object).</p>
+<p>If no entries are given, the <a href="#apply">apply</a> command uses the <a href="#$entries">$ENTRIES</a> global variable.</p>
+<p>The entries are merely locally modified!
+You must <a href="#commit">commit</a>!
+You can see the changes using the <a href="#changes">changes</a> command.</p>
+<p>Example: <code>apply {$_-&gt;replace('department', ['New Dept']) if $_-&gt;get_value('department') =~ /CCSR/}</code></p>
+<p>
+</p>
+<h3><a name="add">add</a></h3>
+<p><strong>Synopsis</strong>: <code>add '&lt;attribute&gt;', '&lt;value&gt;' ...</code></p>
+<p>Add one or more new attributes to the entries in the <a href="#$entries">$ENTRIES</a> global variable.</p>
+<p>The values will be added to the values that already exist for the given attribute.</p>
+<p>The entries are locally modified! You must <a href="#commit">commit</a>! You can see the changes
+done using the <a href="#changes">changes</a> command.</p>
+<p>Example: <code>add 'givenName', 'Bob', 'Robert'</code></p>
+<p>
+</p>
+<h3><a name="replace">replace</a></h3>
+<p><strong>Synopsis</strong>: <code>replace '&lt;attribute&gt;', '&lt;value&gt;' ...</code></p>
+<p>Similar to <a href="#add">add</a>, except that the given values will replace any values that
+already exist for the given attribute.</p>
+<p>The entries are merely locally modified! You must <a href="#commit">commit</a>! You can see the changes
+using the <a href="#changes">changes</a> command.</p>
+<p>Example: <code>replace 'givenName', 'Bill', 'William'</code></p>
+<p>
+</p>
+<h3><a name="delete">delete</a></h3>
+<p><strong>Synopsis</strong>: <code>delete '&lt;attribute&gt;'[, '&lt;value&gt;' ...]</code></p>
+<p>Delete the values of given attribute from the the <a href="#$entries">$ENTRIES</a> global variable.
+If no values are given, the entire attribute will be deleted.</p>
+<p>The entries are locally modified! You must <a href="#commit">commit</a>! You can see the changes
+done using the <a href="#changes">changes</a> command.</p>
+<p>Example: <code>delete 'givenName'</code></p>
+<p>
+</p>
+<h3><a name="changes">changes</a></h3>
+<p><strong>Synopsis</strong>: <code>changes [$entries]</code></p>
+<p>Show the changes done to the entries given in the <code>$entries</code> array reference (or <a href="#$entries">$ENTRIES</a>, if omitted). You can apply some changes to a set of entries using the <a href="#apply">apply</a> command, and see the changes using the <a href="#changes">changes</a> command.</p>
+<p>
+</p>
+<h3><a name="commit">commit</a></h3>
+<p><strong>Synopsis</strong>: <code>commit [$entries]</code></p>
+<p>Commit local changes to the server. You can modify the a set of entries using the <a href="#apply">apply</a> command.</p>
+<p>
+</p>
+<h2><a name="$entries_manipulation">$ENTRIES manipulation</a></h2>
+<p>
+</p>
+<h3><a name="nbentries">nbentries</a></h3>
+<p><strong>Synopsis</strong>: <code>nbentries [$entries]</code></p>
+<p>Display the number of entries in <code>$entries</code> (or the global variable <a href="#$entries">$ENTRIES</a> if omitted).</p>
+<p>
+</p>
+<h3><a name="append">append</a></h3>
+<p><strong>Synopsis</strong>: <code>append</code></p>
+<p>The entries found in a search will in future be appended to the <a href="#$entries">$ENTRIES</a> variable instead of replacing any existing values.
+Returns 0 if the previous mode was ``append'' and 1 if the previous mode was ``noappend''.</p>
+<p>
+</p>
+<h3><a name="noappend">noappend</a></h3>
+<p><strong>Synopsis</strong>: <code>append</code></p>
+<p>The entries found in a search will replace the values on the <a href="#$entries">$ENTRIES</a> variable, instead of being appended.
+Returns 1 if the previous mode was ``append'' and 0 if the previous mode was ``noappend''.</p>
+<p>
+</p>
+<h3><a name="exclude">exclude</a></h3>
+<p><strong>Synopsis</strong>: <code>exclude [$entries] '&lt;regexp&gt;'</code></p>
+<p>Remove the entries whose DNs match the given regexp from the <code>$entries</code> list (or the global variable <a href="#$entries">$ENTRIES</a> if omitted).</p>
+<p>
+<a href="#__index__"><small>Back to Top</small></a>
+</p>
+<hr />
+<h1><a name="files">FILES</a></h1>
+<ul>
+<li><strong><a name="item_%7e%2f%2eldapshrc"><em>~/.ldapshrc</em></a></strong><br />
+</li>
+Any Perl code you want. It will be ``eval''ed in the script context.
+So you can write functions in it and call them from the shell.
+<p>This is <em>very</em> useful for creating aliases. Here is an example of what you can put
+on your <em>.ldapshrc</em>:</p>
+<pre>
+  sub ads {
+    $CONNPARAMS{SERVER} = 'ads.company.com';
+    $CONNPARAMS{BINDDN} = '.. blabla ...';
+    $CWD='dc=linkvest,dc=com';
+    connect;
+    bind;
+  }</pre>
+<p>So, in your shell you can type ``ads'' and get connected to a specific server.
+Additionally, you could invoke <strong>ldapsh</strong> as <code>ldapsh ads</code> to call the function
+straight away.</p>
+<p>Remember: you put in this file Perl code. So you can do whatever you want!!!</p>
+<p></p>
+<li><strong><a name="item_%2fetc%2fldapshrc"><em>/etc/ldapshrc</em></a></strong><br />
+</li>
+Same as <em>$HOME/.ldaprc</em>, only system-wide.
+<p></p>
+<li><strong><a name="item_%24home%2f%2eldapsh_history"><em>$HOME/.ldapsh_history</em></a></strong><br />
+</li>
+For internal use. The shell saves the history in this file (provided you have
+<strong>Term::ReadLine::Gnu</strong> installed) when you quit your shell, and loads it when you
+start the shell again.
+<p></p></ul>
+<p>
+<a href="#__index__"><small>Back to Top</small></a>
+</p>
+<hr />
+<h1><a name="variables">VARIABLES</a></h1>
+<p>
+</p>
+<h2><a name="$columns">$COLUMNS</a></h2>
+<p>The width of the output device in characters (decimal string).
+Its initial value is obtained from the environment or the <strong>Term::Size</strong> module,
+with a default of 80 characters.</p>
+<p>
+</p>
+<h2><a name="$connparams>{server}">$CONNPARAMS-&gt;{SERVER}</a></h2>
+<p>The name of the server to connect to when the <a href="#connect">connect</a> function will be called.</p>
+<p>
+</p>
+<h2><a name="$connparams>{binddn}">$CONNPARAMS-&gt;{BINDDN}</a></h2>
+<p>The DN to bind with when the <a href="#bind">bind</a> function will be called.</p>
+<p>
+</p>
+<h2><a name="$connparams>{port}">$CONNPARAMS-&gt;{PORT}</a></h2>
+<p>The port to connect to when the <a href="#connect">connect</a> function will be called. 389 by default.</p>
+<p>
+</p>
+<h2><a name="$connparams>{ldapversion}">$CONNPARAMS-&gt;{LDAPVERSION}</a></h2>
+<p>The protocol version to use (3 by default).</p>
+<p>
+</p>
+<h2><a name="$connparams>{ssl}">$CONNPARAMS-&gt;{SSL}</a></h2>
+<p>Set this to 'tls' if you connect to the standard LDAP port and use
+Transport Layer Security for encryption.  Set this to 'ssl' if you
+want to use SSL to a dedicated port on the server.  Any other value,
+including not setting this at all, will get you an unencrypted
+connection.</p>
+<p>Currently, no certificate verification is done.</p>
+<p>
+</p>
+<h2><a name="$cwd">$CWD</a></h2>
+<p>The <em>current working directory</em> in the LDAP Directory Tree. You can change the
+<em>current working directory</em> (relatively with the <a href="#cd">cd</a> command, or absolutely
+using this variable).</p>
+<p>
+</p>
+<h2><a name="$dnsep">$DNSEP</a></h2>
+<p>String used to separate DNs on a line (see <a href="#ls">ls</a>).</p>
+<p>
+</p>
+<h2><a name="$editor">$EDITOR</a></h2>
+<p>The default editor used when the <a href="#vi">vi</a> command is called. By default, this is obtained
+from the environment variable $VISUAL (if set) or $EDITOR (if set) or otherwise ``vi''.</p>
+<p>
+</p>
+<h2><a name="$entries">$ENTRIES</a></h2>
+<p>The buffer of entries (<strong>Net::LDAP::Entry</strong>). It's an array reference. Contains the last entries got with the
+commands <a href="#ls">ls</a>, <a href="#cat">cat</a>, <a href="#search">search</a>...</p>
+<p>
+</p>
+<h2><a name="$g">$G</a></h2>
+<p>A global variable you can use as you want. As we use the <code>strict</code> module, you cannot declare variables in the shell without using <code>my</code>. And if you use <code>my</code>, the scope of your variable is the line you entered, so your variable will not live until the next command you type.</p>
+<p>Using this variable you can store objects, scalars, everything you want.</p>
+<p><strong>Example</strong>: <code>$G = $ENTRIES</code></p>
+<p>Will save the entries found during the last search, so you can use this later. You only have one global variable for your own use, so if you need more than one, set this variable to a hash:</p>
+<p><strong>Example</strong>: <code>$G = {ENTRIES =</code> $ENTRIES, PWD =&gt; $PWD}; $G-&gt;{TIME} = time();&gt;</p>
+<p>
+</p>
+<h2><a name="$ldapconn">$LDAPCONN</a></h2>
+<p>Contains the <strong>Net::LDAP</strong> handler. Use it only if you know what you are doing...</p>
+<p>
+</p>
+<h2><a name="$oldwd">$OLDWD</a></h2>
+<p>The immediate past <em>current working directory</em>, updated by the <a href="#cd">cd</a> and <a href="#setdn">setdn</a> commands.</p>
+<p>
+</p>
+<h2><a name="$prompt">$PROMPT</a></h2>
+<p>The prompt template. It will be ``eval''ed so will do variable substitution.
+You can use the ${APP} variable to display ``**'' when you are in ``append mode''
+(see <a href="#append">append</a> and <a href="#noappend">noappend</a>).</p>
+<p>Example: $PROMPT = '${APP}\[LDAP @ $CONNPARAMS-&gt;{SERVER}] $CWD &gt; '</p>
+<p>
+<a href="#__index__"><small>Back to Top</small></a>
+</p>
+<hr />
+<h1><a name="see_also">SEE ALSO</a></h1>
+<ul>
+<li><strong><a name="item_barr">The excellent <strong>Net::LDAP</strong> Perl module written by Graham Barr (see &lt;<a href="http://perl-ldap.sourceforge.net/">http://perl-ldap.sourceforge.net/</a>&gt;).</a></strong><br />
+</li>
+<li><strong><a name="item_module">The <strong>Term::ReadLine::Gnu</strong> module (see &lt;<a href="http://cnswww.cns.cwru.edu/php/chet/readline/rltop.html">http://cnswww.cns.cwru.edu/php/chet/readline/rltop.html</a>&gt;).</a></strong><br />
+</li>
+</ul>
+<p></p>
+<p>
+<a href="#__index__"><small>Back to Top</small></a>
+</p>
+<hr />
+<h1><a name="authors">AUTHORS</a></h1>
+<p>By chronological contribution:</p>
+<ul>
+<li><strong><a name="item_corvalan">Rafael Corvalan (&lt;<a href="mailto:rcorvalan@users.sourceforge.net">rcorvalan@users.sourceforge.net</a>&gt;)</a></strong><br />
+</li>
+<li><strong><a name="item_peder_o%2e_klingenberg">Peder O. Klingenberg</a></strong><br />
+</li>
+<li><strong><a name="item_james_devenish">James Devenish</a></strong><br />
+</li>
+</ul>
+<p>
+<a href="#__index__"><small>Back to Top</small></a>
+</p>
+<hr />
+<h1><a name="feedback">FEEDBACK</a></h1>
+<p>Please report bugs to the mailing list &lt;<a href="mailto:ldapsh-devel@lists.sourceforge.net">ldapsh-devel@lists.sourceforge.net</a>&gt; or through &lt;<a href="http://sourceforge.net/tracker/?group_id=54115&atid=472731">http://sourceforge.net/tracker/?group_id=54115&atid=472731</a>&gt;.</p>
+<p>Send comments and suggestions to the above mailing list.</p>
+<p>Post Feature Requests to &lt;<a href="http://sourceforge.net/tracker/?group_id=54115&atid=472734">http://sourceforge.net/tracker/?group_id=54115&atid=472734</a>&gt;.</p>
+<p>
+<a href="#__index__"><small>Back to Top</small></a>
+</p>
+<hr />
+<h1><a name="copyright">COPYRIGHT</a></h1>
+<p>This program is free software; you can redistribute it and/or modify it under the same terms as Perl itself.
+If you have some enhancements or bug corrections, I'd appreciate if you send them to me so I can improve the original version.</p>
+<p><a href="#__index__"><small>Back to Top</small></a></p>
+<table border="0" width="100%" cellspacing="0" cellpadding="3">
+<tr><td class="block" valign="middle">
+<big><strong><span class="block">&nbsp;ldapsh - Shell for an easy LDAP access and content changes</span></strong></big>
+</td></tr>
+</table>
+
+</body>
+
+</html>

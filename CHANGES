@@ -1,0 +1,57 @@
+########################
+##   0.9.3 -> 0.9.4   ##
+########################
+
+* File: >> ldapsh <<
+      - new commands: 'cp', 'mv', 'rm', 'mkdir', 'history',
+        'add', 'replace', 'delete'.
+      - 'vi' command now supports editing.
+      - 'cd' command now supports '-' and two-argument syntaxes.
+      - system-wide rc files.
+      - improved GNU Readline support.
+      - expanded documentation and an enhanced 'help' command.
+      - improved handling of errors.
+      - expanded tab-completion.
+      - an improved mechanism for redirection of output.
+      - additional pre-set variables.
+      - ldapsh will interpret expressions given on the command line
+        (such as the name of a subroutine from your .ldapshrc).
+      - 'ls' now includes a multi-column format.
+      - support for enhanced shell-style system via an optional
+        third-party package.
+
+########################
+##   0.9.2 -> 0.9.3   ##
+########################
+
+* File: >> CHANGES <<
+  <New file>
+
+
+* File: >> ldapshrc <<
+  Changes:
+      Added the PORT setting to the ads() function.
+      With the previous version, when I called ads() after
+      calling unixldap(), I connected to the port 636 without
+      SSL...
+
+
+* File: >> ldapsh <<
+  New functionalities:
+      1) Now we can do options "bundling".
+         For exmample: "ls -lr"
+      2) Added the id() function
+      3) Added the loadrc() function (alias source())
+      4) Added a csv() function to print the entries in a CSV format
+  Changes:
+      1) The list() function had an argument "-d". It has been
+         renamed to "-dn"
+      2) The one letter dash arguments are now automatically quoted
+         in the command line. This is done in a very simple way, and
+         it's not really safe.
+         Example:
+            ls "cn=John -f Kennedy"
+         will be replaced by
+            ls "cn=John '-f' Kennedy"
+         This avoid the tedious: "ls '-l'", that can now be
+         written "ls -l"

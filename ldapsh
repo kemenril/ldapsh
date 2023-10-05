@@ -1,0 +1,3144 @@
+#!/usr/bin/perl
+
+# vim:ts=4:sw=4:noet:ai:
+
+#####################################################################
+# Copyright (c) 2002, 2003 Rafael Corvalan
+# All rights reserved.
+# This program is free software; you can redistribute it and/or
+# modify it under the same terms as Perl itself.
+# Please submit comments/bugs/patches using the web tracking system
+# (http://sourceforge.net/tracker/?group_id=54115) or using the
+# mailing lists described at
+# http://sourceforge.net/mail/?group_id=54115
+#####################################################################
+
+
+=head1 NAME
+
+ldapsh - Shell for an easy LDAP access and content changes
+
+=head1 SYNOPSIS
+
+ldapsh [expression]
+
+=head1 EXAMPLE
+
+For readability reasons, the example can only be viewed on the HTML version
+of the documentation (use the B<pod2html> command).
+
+=begin html
+
+<pre>
+
+    bash-prompt> ldapsh>
+    [LDAP @ ]  > ads
+    Password > ***********
+    [LDAP @ adsserver] dc=linkvest,dc=com > ls
+    OU=France
+    OU=Switzerland
+    -----
+    2 entries found
+    [LDAP @ adsserver] dc=linkvest,dc=com > cd ou=Switzerland,ou=Users
+    [LDAP @ adsserver] ou=Users,ou=Switzerland,dc=linkvest,dc=com > search 'department=*'
+    95 entries found
+    [LDAP @ adsserver] ou=Users,ou=Switzerland,dc=linkvest,dc=com > apply {$_->replace('department', ['New Dept']) if $_->get_value('department') =~ /CCSR/}
+    [LDAP @ adsserver] ou=Users,ou=Switzerland,dc=linkvest,dc=com > changes
+    ========================================
+    CN=Test user 1,OU=Users,OU=Switzerland,DC=linkvest,DC=com
+            >>> Replace attribute 'department' with values: 'New Dept'
+    ========================================
+    CN=Test user 2,OU=Users,OU=Switzerland,DC=linkvest,DC=com
+            >>> Replace attribute 'department' with values: 'New Dept'
+    ========================================
+    CN=Test user 3,OU=Users,OU=Switzerland,DC=linkvest,DC=com
+            >>> Replace attribute 'department' with values: 'New Dept'
+    ========================================
+    CN=Test user 4,OU=Users,OU=Switzerland,DC=linkvest,DC=com
+            >>> Replace attribute 'department' with values: 'New Dept'
+    ========================================
+    CN=Test user 5,OU=Users,OU=Switzerland,DC=linkvest,DC=com
+            >>> Replace attribute 'department' with values: 'New Dept'
+    ========================================
+    CN=Test user 6,OU=Users,OU=Switzerland,DC=linkvest,DC=com
+            >>> Replace attribute 'department' with values: 'New Dept'
+    ========================================
+    6 entries to commit
+    [LDAP @ adsserver] ou=Users,ou=Switzerland,dc=linkvest,dc=com > commit
+    Changed 6 entries of 95. 0 errors.
+    [LDAP @ adsserver] ou=Users,ou=Switzerland,dc=linkvest,dc=com > quit
+    bash-prompt>
+
+</pre>
+
+=end html
+
+=head1 DESCRIPTION
+
+B<ldapsh> is a shell that allows you to work in an interactive way with LDAP entries.
+Usually, system administrators use scripts (shell, B<perl>, B<python>...) to do massive changes
+or to take a look inside an LDAP directory. With this shell you can navigate through the
+directory almost as it it were a filesystem. You have a I<current working directory>
+(L<$CWD|"$CWD">) and you enter L<ls|ls> to list the entries in this "directory". You can change
+the I<current working directory> using L<cd|cd> and display an entry using L<cat|cat>.
+
+=head2 How it works
+
+If you have to remember only one thing, it is: This shell is simply a set
+of Perl functions and all you do is to call functions from a prompt.
+
+You can request help typing L<help [E<lt>commandE<gt>]|help> or, if you use
+B<Term::ReadLine::Gnu>, you can type C<E<lt>CTRL-tE<gt>> after a command
+to get help on it.
+
+B<ldapsh> includes a simple command-line interpreter. It can also make use of
+the optional B<Psh> module for an enhanced user experience. This manual
+describes both interpreters as indicated by [ldapsh] and [Psh], respectively. Both
+interpreters facilitate evaluation of Perl expressions and you may use the
+L<$G|"$G"> variable to store your own data.
+
+In this manual, command options are shown as C<'-l',> to be compatible with the
+Perl C<eval()> function. However, you do not usually need to type the
+apostrophes because B<ldapsh> will insert them automatically. If you have
+B<Psh> installed, you do not need to use commas, either.
+
+[ldapsh] Whatever you type at the prompt will either be:
+
+=over 8
+
+=item * Executed in a C<system()> call (if your entry starts with an exclamation mark).
+
+=item * Evaluated as a Perl expression (using C<eval()>).
+
+=back
+
+For convenience, a few commands (such as L<cd|cd>, L<lcd|lcd> and L<help|help>)
+automatically quote their arguments. Thus, you can type C<cd ou=Users>
+instead of C<cd "ou=Users">.
+
+[Psh] What you type at the prompt will be passed through a number of handlers
+that facilitate a rich shell-like syntax. The order of precedence is:
+exclamation mark, brace, B<ldapsh> commands, Perl functions, shell executables,
+Perl evaluation. Please note the following examples for correct quoting of
+strings, arrays, and hashes:
+
+=over 8
+
+=item * Correct (expands L<$CWD|"$CWD">): echo $CWD
+
+=item * Correct (expands L<$CWD|"$CWD">): echo "$CWD"
+
+=item * Prints C<$CWD> literally: echo '$CWD'
+
+=item * Correct (expands L<$ENTRIES|"$ENTRIES">): ls $ENTRIES
+
+=item * Correct (expands L<$ENTRIES|"$ENTRIES">): nbentries $ENTRIES
+
+=item * Incorrect (converts array reference to a string): nbentries "$ENTRIES"
+
+=item * Incorrect (does not expand the variable): nbentries '$ENTRIES'
+
+=item * Expands $ENV{PATH}: echo "$ENV{PATH}"
+
+=item * Expands $ENV{PATH}: echo $ENV\{PATH\}
+
+=item * $ENV expanded on its own: echo $ENV{PATH}
+
+=item * Prints C<$ENV{PATH}> literally: echo '$ENV{PATH}'
+
+=back
+
+=head2 Expansion of LDAP DNs and Filters
+
+Almost every function that uses LDAP entries (L<ls|ls>, L<cat|cat>,
+L<ldif|ldif>, L<dump|dump>, etc...) has three syntaxes. Such functions are
+identified in the documentation with a usage like: C<ls E<lt>expansionE<gt>>
+
+The three syntaxes are:
+
+=over 8
+
+=item 1. E<lt>functionE<gt> ['-r',] $filter
+
+The filter used to perform a search. The scope is I<one>, unless the C<-r>
+argument is used, in which case the scope is I<sub>. The base for the search
+is the I<current working directory>.
+
+The results of the search are put in the L<$ENTRIES|"$ENTRIES"> array reference
+(composed of B<Net::LDAP::Entry> entries).
+
+=item 2. E<lt>functionE<gt> ['-r'|.]
+
+This is like the previous usage. The search filter is C<(objectclass=*)>.
+
+If neither C<-r> nor the dot (a.k.a. "full stop" or "period") is given, the
+scope is I<one>. If C<-r> is given, the scope is I<sub>. If the dot is
+given, the scope is I<base> (this can be used to match the I<current working
+directory> itself).
+
+=item 3. E<lt>functionE<gt> $entries
+
+You can give some B<Net::LDAP::Entry> objects in an array reference.
+With this syntax, no search is done.
+
+=back
+
+=head2 REDIRECTION
+
+By default, LDAP results are displayed on the "standard output" while
+diagnostic messages are printed to the "standard error".
+
+You may redirect search results using the L<redir|redir> command. This will
+stay in effect until L<noredir|noredir> is called.
+
+[Psh] Psh allows you to use standard shell symbols such as "|" (for piping)
+and ">" (for output redirection).
+
+[ldapsh] Alternatively, you can use a special shell syntax which will have only a
+temporary effect. The special syntax is appending "; | ..." to your command,
+where "..." is a parameter to the C<open> function.
+
+For example:
+
+	ldapsh> redir '|awk "/Smith/{print}"'
+	ldapsh> cat
+	cn: Jack Smith
+	sn: Smith
+	cn: Jill Smith
+	sn: Smith
+	ldapsh> version;|cat
+	LDAP Shell (ldapsh) by Rafael Corvalan.
+	ldapsh> cat
+	cn: Jack Smith
+	sn: Smith
+	cn: Jill Smith
+	sn: Smith
+	ldapsh> noredir
+
+=head1 PREREQUISITES
+
+B<ldapsh> uses the following Perl modules:
+
+=over 8
+
+=item * B<Data::Dumper>
+
+=item * B<Devel::Symdump>
+
+=item * B<File::Temp>
+
+=item * B<Getopt::Long>
+
+=item * B<Net::LDAP>
+
+=item * B<Pod>
+
+=item * B<Term::ReadLine>
+
+=back
+
+B<ldapsh> can benefit from the following Perl modules:
+
+=over 8
+
+=item * B<Net::LDAPS>
+
+=item * B<POSIX::Termios>
+
+=item * B<Psh>
+
+=item * B<Term::ReadKey>
+
+=item * B<Term::ReadLine::Gnu>
+
+=item * B<Term::Size>
+
+=back
+
+=cut
+
+package ldapsh;
+
+use strict;
+use Term::ReadLine;
+use Data::Dumper qw(Dumper);
+#use Unicode::MapUTF8 qw(to_utf8 from_utf8);
+use subs qw(bind connect delete dump exit mkdir rename reset);
+
+my $PSH_SUPPORT;
+
+BEGIN {
+	require Net::LDAP;
+	require Cwd;
+	require Devel::Symdump;
+
+	require Getopt::Long;
+
+	Getopt::Long::Configure ('bundling_override');
+
+	if ($ENV{LDAPSH_PARSER}) {
+		$PSH_SUPPORT = $ENV{LDAPSH_PARSER} eq "Psh" && eval "require Psh";
+	}
+	else {
+		$PSH_SUPPORT = eval "require Psh";
+	}
+
+	if (!$PSH_SUPPORT) {
+		#use warnings;
+		$^W = 1;
+		# leave warnings off when psh is in use
+	}
+}
+
+our $RELEASE = '0.9.4pre1';
+
+my $Opts = {
+	HistoryFile  => $ENV{HOME} . '/.ldapsh_history',
+	RCFile       => $ENV{HOME} . '/.ldapshrc',
+	GlobalRCFile => "/etc/ldapshrc"
+};
+
+
+my $Globals = {
+	CWD                  => {VALUE => '', RIGHTS => 'RWL'},
+	OLDWD                  => {VALUE => '', RIGHTS => 'RWL'},
+	CONNPARAMS           => {VALUE =>
+	                            {
+	                                SERVER      => '',
+	                                SSL         => 0,
+	                                BINDDN      => '',
+	                                LDAPVERSION => '3'
+	                            },
+	                            RIGHTS => 'RWL'
+	                        },
+	LDAPCONN             => {VALUE => undef, RIGHTS => 'RW'},
+	DNSEP                => {VALUE => "; ", RIGHTS => 'RWL'},
+	ENTRIES              => {VALUE => [], RIGHTS => 'RW'},
+	COLUMNS              => {VALUE =>
+	                            ( $ENV{COLUMNS} && $ENV{COLUMNS} =~ /^[+]?\d+$/ ) ?
+	                                $ENV{COLUMNS} : ( eval "require Term::Size; Term::Size::chars();" || 80 ),
+	                            RIGHTS => 'RWL'
+	                        },
+	PROMPT               => {VALUE => '${APP}\[LDAP @ $CONNPARAMS->{SERVER}] $CWD > ', RIGHTS => 'RWL'},
+	EDITOR               => {VALUE => $ENV{VISUAL} ? $ENV{VISUAL} : ($ENV{EDITOR} ? $ENV{EDITOR} : 'vi'), RIGHTS => 'RWL'},
+	G                    => {VALUE => undef, RIGHTS => 'RWL'},
+	LDAPSH_PARSER        => {VALUE => $PSH_SUPPORT ? "Psh" : "ldapsh", RIGHTS => 'RL'},
+	_APPENDRESULTS       => {VALUE => 0, RIGHTS => ''},
+	_DIRSSTACK           => {VALUE => [], RIGHTS => ''},
+	_ARGV                => {VALUE => [@ARGV], RIGHTS => ''},
+	_EFFECTIVECONNPARAMS => {VALUE =>
+	                            {
+	                                SERVER      => undef,
+	                                SSL         => undef,
+	                                BINDDN      => undef,
+	                                LDAPVERSION => undef
+	                            },
+	                            RIGHTS => ''
+	                        }
+};
+
+my $Output = {
+	NAME => "STDOUT",
+	FILEHANDLE => \*STDOUT
+};
+
+our ($COLUMNS, $CONNPARAMS, $CWD, $DNSEP, $EDITOR, $ENTRIES, $G, $LDAPCONN, $OLDWD, $PROMPT);
+our ($LDAPSH_PARSER, $PERL_RL); # read-only values
+my ($Term, $TermAttribs);
+
+sub _Init() {
+	foreach (keys %$Globals) {
+		next if /^_/;
+		eval(sprintf(q{tie ${%s}, 'Tie::Scalar::Hash', $Globals, '%s'}, $_, $_)) || warn $@;
+	}
+
+	if (-r $Opts->{GlobalRCFile}) {
+		loadrc($Opts->{GlobalRCFile});
+	}
+
+	loadrc();
+
+	_InitReadLine();
+
+	$SIG{INT} = 'IGNORE';
+	$SIG{__DIE__} = \&_resetTermReadline;
+
+	if ($PSH_SUPPORT) {
+		eval('Psh::minimal_initialize(); Psh::finish_initialize(); $Psh::eval_preamble = "package ldapsh;"; $Psh::PerlEval::current_package = "ldapsh";');
+	}
+}
+
+sub _resetTermReadline() {
+	if (_isGnuReadLine()) {
+		$Term->free_line_state();
+		$Term->cleanup_after_signal();
+	}
+}
+
+sub _InitReadLine {
+	$Term = new Term::ReadLine('LDAPShell', \*STDIN, \*STDERR);
+
+	$Globals->{PERL_RL} = { VALUE => $Term->ReadLine, RIGHTS => 'RL' };
+	$Globals->{PERL_RL}{VALUE} =~ s/^Term::ReadLine:://;
+	eval(sprintf(q{tie ${%s}, 'Tie::Scalar::Hash', $Globals, '%s'}, 'PERL_RL', 'PERL_RL')) || warn $@;
+
+	_ReadHistory();
+	$TermAttribs = $Term->Attribs;
+	$TermAttribs->{basic_word_break_characters} = qq( \t'"\$\@);
+	$TermAttribs->{completer_word_break_characters} = qq( \t'"\$\@);
+
+	undef $TermAttribs->{completion_entry_function};
+	$TermAttribs->{attempted_completion_function} = \&_attemptLDAPShellCompletion;
+
+	if (_isGnuReadLine()) {
+		$Term->add_defun('complete-dn',       \&_LDAPShellCompleteDN, -1);
+		$Term->add_defun('complete-var',      \&_LDAPShellCompleteVar, -1);
+		$Term->add_defun('complete-function', \&_LDAPShellCompleteFunction, -1);
+		$Term->add_defun('ldapsh-cmdhelp',    \&_LDAPShellCommandHelp, ord "\ct");
+	}
+}
+
+sub _ifdef {
+	my $a = shift;
+	return(defined($a) ? $a : shift);
+}
+
+
+
+#############################################################
+#                                                           #
+#            U T I L I T Y    F U N C T I O N S             #
+#                                                           #
+#############################################################
+
+sub _isGnuReadLine() {
+	return($Term->ReadLine eq 'Term::ReadLine::Gnu');
+}
+
+sub _askText($) {
+	my ($prompt) = @_;
+	my $oldMinLine = $Term->MinLine(undef);
+	my $response = $Term->readline($prompt);
+	$Term->MinLine($oldMinLine);
+	return $response || "";
+}
+
+sub _askBool($$) {
+	my ($prompt, $default) = @_;
+	my $choice;
+	my $retval;
+	if ($default) {
+		$choice = " [Y/n] ";
+	} else {
+		$choice = " [y/N] ";
+	}
+	my $oldMinLine = $Term->MinLine(undef);
+	my $response = $Term->readline($prompt.$choice);
+	$Term->MinLine($oldMinLine);
+	$response ||= "";
+	if ($response =~ /^y/i) {
+		$retval = 1;
+	} elsif ($response =~ /^n/i) {
+		$retval = 0;
+	} else {
+		$retval = $default || 0;
+	}
+
+	return $retval;
+}
+
+sub _debug(@) {
+	printf STDERR "\nvvvvvvvvvvvvvvvv\n" . join('', map {"'$_'\n"} @_) . "^^^^^^^^^^^^^^^^\n";
+}
+
+sub _ReadHistory() {
+	$Term->ReadHistory($Opts->{HistoryFile}) if _isGnuReadLine;
+}
+
+sub _WriteHistory() {
+	$Term->WriteHistory($Opts->{HistoryFile}) if _isGnuReadLine;
+}
+
+sub _isReallyLDAPError ($) {
+	my $code = shift;
+	return 1 if $code and $code != Net::LDAP::Constant::LDAP_PARTIAL_RESULTS() and $code != Net::LDAP::Constant::LDAP_REFERRAL();
+	return 0;
+}
+
+sub _bindneeded {
+	if ($Globals->{LDAPCONN}{VALUE}) {
+		unless($Globals->{LDAPCONN}{VALUE}->socket() && $Globals->{LDAPCONN}{VALUE}->socket()->connected()) {
+			print STDERR "\nConnection lost. Trying to reconnect.\n";
+			undef $Globals->{_EFFECTIVECONNPARAMS}{VALUE}{BINDDN};
+			return 0 unless connect();
+		}
+	}
+
+	unless (defined($Globals->{_EFFECTIVECONNPARAMS}{VALUE}{BINDDN})) {
+		print STDERR "Binding...\n";
+		bind;
+	}
+
+	return 1 if defined($Globals->{_EFFECTIVECONNPARAMS}{VALUE}{BINDDN});
+}
+
+sub _haveentries {
+	my $entries = shift || $Globals->{ENTRIES}{VALUE};
+	unless (defined($entries) && scalar(@{$entries}) > 0) {
+		print STDERR "No entries defined. Have you forgotten to do a search prior to changing anything?\n";
+		return undef;
+	}
+}
+
+# Search with Connection error checking, and try to reconnect if disconnected
+sub _searchWEC {
+	_bindneeded() or return();
+
+	my $result = $Globals->{LDAPCONN}{VALUE}->search(@_);
+
+	if ($result->code == Net::LDAP::LDAP_OPERATIONS_ERROR and $result->error =~ m%^I/O Error%) {
+		_bindneeded() or return();
+		$result = $Globals->{LDAPCONN}{VALUE}->search(@_);
+	}
+
+	return $result;
+}
+
+
+
+sub _search {
+	my %SearchParams = @_;
+
+	my $result = _searchWEC(
+		base   => $SearchParams{BaseDN},
+		scope  => $SearchParams{Scope},
+		filter => $SearchParams{Filter},
+		attrs  => $SearchParams{Attrs}
+	);
+	return unless defined($result);
+
+	if (_isReallyLDAPError($result->code)) {
+		printf STDERR (qq(Error on LDAP search. Code='%s'. Message='%s'\n), $result->code, $result->error);
+		return;
+	} else {
+		$Globals->{ENTRIES}{VALUE} = [] unless $Globals->{_APPENDRESULTS}{VALUE};
+		my @entries = $result->entries();
+		push @{$Globals->{ENTRIES}{VALUE}}, @entries;
+		return \@entries;
+	}
+}
+
+sub _printattr($$$) {
+	my ($key, $value, $showattribnames) = @_;
+	if ($showattribnames) {
+		printf {$Output->{FILEHANDLE}} ("%s:%s\n", $key, $value);
+	} else {
+		print {$Output->{FILEHANDLE}} ("$value\n");
+	}
+}
+
+sub _entriesExpander ($@) {
+	my $unknownArgsSpecs = shift;
+
+	@ARGV = @_;
+
+	my @OptionSpecs = qw(r);
+	my $Options;
+
+	if (defined($unknownArgsSpecs) and scalar(@{$unknownArgsSpecs})) {
+		my @specs;
+		($Options, @specs) = @$unknownArgsSpecs;
+		push(@OptionSpecs, @specs);
+	} else {
+		$Options = {};
+	}
+
+	return undef unless Getopt::Long::GetOptions($Options, @OptionSpecs);
+
+	my @Specs = ();
+
+	while (defined($_ = shift(@ARGV))) {
+		if (ref($_) eq 'ARRAY') {
+			push @Specs, $_;
+		} elsif (ref ($_)) {
+			print STDERR "The argument passed as a reference is unknown.\n";
+			return undef;
+		} else {
+			push @Specs, $_;
+		}
+	}
+
+	unless (scalar(@Specs)) {
+		push @Specs, '(objectclass=*)';
+	}
+
+	my @entries;
+	foreach my $spec (@Specs) {
+		if (ref($spec)) {
+			push(@entries, @$spec);
+		} else {
+			my $searchedEntries;
+			if ($spec =~ /^\.$/) {
+				$searchedEntries = _search(
+					BaseDN  => $Globals->{CWD}{VALUE},
+					Scope   => 'base',
+					Filter  => '(objectclass=*)',
+					Attribs => []
+				);
+			} else {
+				$searchedEntries = _search(
+					BaseDN  => $Globals->{CWD}{VALUE},
+					Scope   => $Options->{r} ? 'sub' : 'one',
+					Filter  => $spec,
+					Attribs => []
+				);
+			}
+			if (defined($searchedEntries)) {
+				push(@entries, @$searchedEntries);
+			} else {
+				print STDERR "\nError while searching according to filter '$spec'.\n";
+			}
+		}
+	}
+
+	return \@entries;
+}
+
+sub _LDAPShellCommandHelp {
+	my ($line, $cursor) = ($TermAttribs->{line_buffer},$TermAttribs->{point});
+	my $substr = reverse(substr($line, 0, $cursor));
+
+	if ($substr =~ /^\s*$/) {
+		help();
+		return 1;
+	}
+
+	my @cmds = _commandListGenerator();
+	map { $_ = reverse($_); } @cmds;
+	my $regexp = join('|', @cmds);
+
+	$substr =~ /^.*?\b($regexp)\b/;
+
+	if (defined($1)) {
+		my $cmd = reverse($1);
+		help($cmd);
+		return 1;
+	} else {
+		print STDERR "No help found.\n";
+		return 0;
+	}
+}
+
+sub _splitdn($$) {
+	return (undef, undef) unless defined $_[0];
+	split(/\s*,\s*/, shift, shift);
+}
+
+package PodHeadings;
+
+use strict;
+use vars qw(@ISA @EXPORT);
+
+@ISA = qw(Pod::Select);
+
+sub verbatim { }
+
+sub textblock { }
+
+sub interior_sequence { }
+
+sub command {
+	my ($self, $cmd, $text, $line_num, $pod_para)  = @_;
+	## Just treat this like a textblock
+	if ($cmd =~ /^head[12]/) {
+		## Just treat this like a textblock
+		my $out_fh = $self->output_handle();
+		print $out_fh "\n\n";
+		$self->SUPER::textblock($pod_para->raw_text(), $line_num, $pod_para);
+	}
+	elsif ($cmd =~ /^head/) {
+		my $stripped = $pod_para->text();
+		my $out_fh = $self->output_handle();
+		$stripped =~ s/\s+$//;
+		print $out_fh $stripped." ";
+	}
+}
+
+package ldapsh;
+
+#############################################################
+#                                                           #
+#        C O M P L E T I O N    F U N C T I O N S           # 
+#                                                           #
+#############################################################
+
+sub _attemptLDAPShellCompletion {
+	my ($text, $line, $start, $end) = @_;
+
+#	 _debug(@_);
+
+	$TermAttribs->{attempted_completion_over} = 1;
+
+	### Command completion ###
+	if (substr($line, 0, $start) =~ /^\s*$/) {
+		return _commandCompletion(@_);
+	}
+
+	### Parameter Completion ###
+	my $line2 = $line;
+	$line2 =~ s/^\s+//;
+	my ($cmd, $rest) = split(/\s+/, $line2, 2);
+	if ($cmd =~ /^(cd|acd|setdn|pushd)$/) {
+		# DN Completion
+		return _cdCommandCompletion(@_);
+	} elsif ($cmd =~ /^(cat|vi|ls|list|csv|dump|ldif|search|cp|mv|rename|remove|rm)$/) {
+		# Filter Completion
+		return _filterCommandCompletion(@_);
+	} elsif ($cmd =~ /^(help|which)$/) {
+		# Command Completion
+		return _commandCompletion(@_);
+	} elsif ($cmd =~ /^(add|replace|delete)$/) {
+		# Attribute Completion
+		return _attributeEditCompletion(@_);
+	} else {
+		return();
+	}
+}
+
+sub _commandListGenerator {
+	my $obj = Devel::Symdump->new(qw(ldapsh));
+	return(grep {not /^_/} (map {s/^ldapsh:://; $_;} $obj->functions()));
+}
+
+sub _commandCompletion {
+	my ($text, $line, $start, $end) = @_;
+	my $oldvalue = $TermAttribs->{completion_word};
+	$TermAttribs->{completion_word} = [_commandListGenerator()];
+	my @ret = $Term->completion_matches($text, $TermAttribs->{'list_completion_function'});
+	$TermAttribs->{completion_word} = $oldvalue;
+	return @ret;
+}
+
+sub _cdCommandCompletion {
+	_bindneeded() or return ();
+
+	my ($text, $line, $start, $end) = @_;
+	$TermAttribs->{completion_append_character} = ',';
+
+	my @parts1 = split(/\s*,\s*/, $text, -1);
+	my $partToComplete = pop @parts1 || '';
+
+	my $prefix = join(',', @parts1);
+
+	my @parts2 = reverse(@parts1);
+
+	my $BaseDN = join(',', @parts2, $Globals->{CWD}{VALUE});
+
+	#$TermAttribs->{completion_append_character} = "\0";
+	if ($partToComplete =~ m/=/) {
+		return _RDNCompletion($prefix, $partToComplete, $BaseDN);
+	}
+	else {
+		return _attributeNamesDNCompletion($prefix, $partToComplete, $BaseDN);
+	}
+}
+
+sub _escape {
+	#return Psh::OS::_escape(shift);
+	my $text = shift;
+	$text =~ s/(?<!\\)([ ])/\\$1/g;
+	return $text;
+}
+
+sub _unescape {
+	#return Psh::Parser::remove_backslash(shift);
+	my $text = shift;
+	$text =~ s/\\([ ])/$1/g;
+	return $text;
+}
+
+sub _attributeNamesDNCompletion($$$) {
+	my ($prefix, $partToComplete, $BaseDN) = @_;
+
+	my $result = _searchWEC(
+		base   => $BaseDN,
+		scope  => 'one',
+		attrs  => [],
+		filter => "(objectclass=*)"
+	);
+	return undef unless defined($result);
+
+	if (_isReallyLDAPError($result->code)) {
+		if ($result->code == Net::LDAP::Constant::LDAP_NO_SUCH_OBJECT()) {
+			return undef;
+		} else {
+			printf STDERR "Cannot search attribute names. LDAP Error no %s (%s)\n", $result->code, $result->error;
+			return undef;
+		}
+	} else {
+		my @entries = $result->entries;
+		my @possible_entries = map {my $a = rdn($_->dn); $a =~ s/=.*/=/; $a;} @entries;
+		@possible_entries = grep {/^$partToComplete/i} @possible_entries;
+		return undef unless scalar(@possible_entries);
+		my $common = _maxCommon(@possible_entries);
+ 		if ($common eq $possible_entries[0]) {
+			# move immediately to the RDNs
+			$partToComplete = $possible_entries[0];
+ 			@possible_entries = map {rdn($_->dn)} @entries;
+			@possible_entries = grep {/^$partToComplete/i} @possible_entries;
+			return undef unless scalar(@possible_entries);
+ 		}
+		if ($prefix) {
+			map {$_ = "${prefix},$_"} @possible_entries;
+			$common = "${prefix},${common}";
+		}
+		return $common, @possible_entries;
+	}
+}
+
+sub _RDNCompletion($$$) {
+	my ($prefix, $partToComplete, $BaseDN) = @_;
+
+	my $result = _searchWEC(
+		base   => $BaseDN,
+		scope  => 'one',
+		attrs  => [],
+		filter => "$partToComplete*"
+	);
+	return undef unless defined($result);
+
+	if (_isReallyLDAPError($result->code)) {
+		if ($result->code == Net::LDAP::Constant::LDAP_NO_SUCH_OBJECT()) {
+			return undef;
+		} else {
+			printf STDERR "Cannot search attribute names. LDAP Error no %s (%s)\n", $result->code, $result->error;
+			return undef;
+		}
+	} else {
+		my @entries = $result->entries;
+ 		my @possible_entries = map {rdn($_->dn)} @entries;
+		@possible_entries = grep {/^$partToComplete/i} @possible_entries;
+		return undef unless scalar(@possible_entries);
+		my $common = _maxCommon(@possible_entries);
+		if ($prefix) {
+			map {$_ = "${prefix},$_"} @possible_entries;
+			$common = "${prefix},${common}";
+		}
+		if ($PSH_SUPPORT && scalar(@possible_entries) == 1) {
+			$possible_entries[0] = _escape($possible_entries[0]);
+		}
+		return $common, @possible_entries;
+	}
+}
+
+sub _attributeEditCompletion{
+	my ($text, $line, $start, $end) = @_;
+	
+	# Put argument delimiter after current comma
+	if ($text =~ /,$/) {
+		$TermAttribs->{completion_append_character} = ' ';
+		return $text;
+	}
+	
+	my $entries = $Globals->{ENTRIES}{VALUE};
+	
+	unless (defined($entries) && scalar(@{$entries}) > 0) {
+		return undef;
+	}
+	
+	$TermAttribs->{completion_append_character} = "\0";
+	
+	if (substr($line, 0, $start) =~ /,/) {
+		my ($name) = ($line =~ /^\S+\s+([^,]*)/);
+		return undef unless defined($name);
+		if ($name =~ /^['"]/) {
+			$name = substr($name, 1, length($name)-2);
+		}
+		my @possible_entries = @{$entries}[0]->get_value($name);
+		@possible_entries = grep {/^$text/i} @possible_entries;
+		return undef unless scalar(@possible_entries);
+		# TODO find longest common prefix
+		if ($PSH_SUPPORT && scalar(@possible_entries) == 1) {
+			$possible_entries[0] = _escape($possible_entries[0]);
+		}
+		return $text, @possible_entries;
+	} else {
+		my @possible_entries = @{$entries}[0]->attributes();
+		@possible_entries = grep {/^$text/i} @possible_entries;
+		return undef unless scalar(@possible_entries);
+		# TODO find longest common prefix
+		# TODO use a cache
+		return $text, @possible_entries;
+	}
+	return undef;
+}
+
+sub _maxCommon {
+	return '' unless scalar(@_);
+	my $firstElement = shift;
+	my $common = '';
+	for (my $i = 1; $i <= length($firstElement); $i++) {
+		my $str = substr($firstElement, 0, $i);
+		last if (grep {substr($_, 0, $i) ne $str} @_);
+		$common = $str;
+	}
+	return $common;
+}
+
+sub _filterCommandCompletion($$$$) {
+	my ($text, $line, $start, $end) = @_;
+
+	_bindneeded() or return undef;
+
+	$TermAttribs->{completion_append_character} = "\0";
+
+	# match the 'filtertype' portion of an LDAP filter (RFC 2254 and RFC 2251)
+	my ($prefix, $attr, $extra, $partToComplete) = $text =~ m/(^|^.*\()([a-z][a-z0-9-]*)((?:;[a-z0-9-]*)?(?:=|~=|>=|<=))(.*)$/i;
+	return undef unless defined($extra);
+
+	my $result = _searchWEC(
+		base   => $Globals->{CWD}{VALUE},
+		scope  => 'one',
+		attrs  => [$attr],
+		filter => "$attr=$partToComplete*"
+	);
+	return undef unless defined($result);
+
+	if (_isReallyLDAPError($result->code)) {
+		if ($result->code == Net::LDAP::Constant::LDAP_NO_SUCH_OBJECT()) {
+			return undef;
+		}
+
+		printf STDERR "Cannot change BaseDN. LDAP Error no %s (%s)\n", $result->code, $result->error;
+		return undef;
+	}
+
+	my @entries = $result->entries;
+	return undef unless scalar(@entries);
+	my @possible_entries = map {$prefix.$attr.$extra.scalar($_->get_value($attr))} @entries; # Bug: only uses first attribute value.
+	my $common = _maxCommon(@possible_entries);
+	if ($PSH_SUPPORT && scalar(@possible_entries) == 1) {
+		$possible_entries[0] = _escape($possible_entries[0]);
+	}
+	return $common, @possible_entries;
+}
+
+
+
+
+#############################################################
+#                                                           #
+#               C O R E    F U N C T I O N S                #
+#                                                           #
+#############################################################
+
+=head1 COMMANDS
+
+=head2 Help or informational commands
+
+=head3 which
+
+B<Synopsis>: C<which 'E<lt>commandE<gt>'>
+
+A synonym for L<help E<lt>commandE<gt>|help>.
+
+=cut
+
+sub which($) {
+	help(@_);
+}
+
+=head3 help
+
+B<Synopsis>: C<help ['E<lt>commandE<gt>'|'all']>
+
+Display help about the given command (or global help, if 'all' is given).
+If no parameter is given, a summary of commands will be shown.
+
+=cut
+
+sub help(;$) {
+	my $cmd = shift;
+
+	my $parser;
+
+	eval 'require POSIX; POSIX::Termios->new';
+	if ($@) {
+		require Pod::Text;
+		$parser = new Pod::Text;
+	} else {
+		require Pod::Text::Termcap;
+		$parser = new Pod::Text::Termcap;
+	}
+	if (defined($cmd) && $cmd eq "all") {
+		$parser->parse_from_file($0, $Output->{FILEHANDLE});
+	}
+	else {
+		require Pod::Select;
+		require File::Temp;
+		my (undef, $podfile) = File::Temp::tempfile(UNLINK=>1);
+		my @docfiles = ($0);
+		my $found = 0;
+		push(@docfiles, $Opts->{GlobalRCFile}) if (-r $Opts->{GlobalRCFile});
+		push(@docfiles, $Opts->{RCFile}) if (-r $Opts->{RCFile});
+		foreach my $file (@docfiles) {
+		if (defined($cmd)) {
+			Pod::Select::podselect(
+				{
+				-output => $podfile,
+				-sections =>	[
+							"DESCRIPTION/$cmd\\b.*",
+							"COMMANDS/${cmd}\\b.*",
+							"COMMANDS/.*/${cmd}"
+						]
+				}, $file);
+		}
+		else {
+			my $headings = new PodHeadings();
+			$headings->select("COMMANDS");
+			$headings->parse_from_file($file, $podfile);
+		}
+		if (-s $podfile) {
+			print {$Output->{FILEHANDLE}} "\n------------------------------\n";
+			$parser->parse_from_file($podfile, $Output->{FILEHANDLE});
+			print {$Output->{FILEHANDLE}} "\n------------------------------\n";
+			$found = 1;
+			last;
+			}
+		}
+		if (! $found) {
+			if (defined($cmd)) {
+				print STDERR "No help found for '$cmd'.\n";
+			}
+			else {
+				print STDERR "No help found.\n";
+			}
+		}
+		unlink $podfile;
+	}
+	return 1;
+}
+
+
+=head3 version
+
+Display the version of the LDAP Shell you're using.
+
+=cut
+
+sub version() {
+	printf {$Output->{FILEHANDLE}} <<'EOF'
+LDAP Shell (ldapsh) by Rafael Corvalan, Peder O. Klingenberg and James Devenish.
+CVS File ID: %s
+Shell release: %s
+http://ldapsh.sourceforge.net/
+EOF
+		, '$Id: ldapsh,v 1.40 2003/12/23 10:46:45 rcorvalan Exp $', $RELEASE;
+}
+
+
+=head3 set
+
+B<Synopsis>: C<set ['-a']>
+
+Display the names and values of the global variables you can set. The purpose of this function is to help the user to remember the names of the variables he can set. The C<-a> parameter allows read-only values to be seen.
+
+=cut
+
+sub set {
+	my $showall = (scalar(@_) and shift =~ /-a/);
+	my $canwrite;
+	my $oldterse = $Data::Dumper::Terse;
+	$Data::Dumper::Terse = 1;
+	foreach (keys %$Globals) {
+		next if /^_/ or not $Globals->{$_}{RIGHTS} =~ /l/i;
+		$canwrite = $Globals->{$_}{RIGHTS} =~ /w/i;
+		next if not $canwrite and not $showall;
+		# Read-only values are displayed with == instead of =
+		printf {$Output->{FILEHANDLE}} "\$%s =%s %s\n", $_, $canwrite ? '' : '=', Dumper($Globals->{$_}{VALUE});
+	}
+	$Data::Dumper::Terse = $oldterse;
+}
+
+
+=head2 Shell or LDAP Server Connexion/Disconnexion
+
+=head3 exit
+
+Save the history and quits the shell.
+
+=cut
+
+sub exit {
+	_WriteHistory();
+	CORE::exit @_;
+}
+
+
+=head3 quit
+
+A synonym for L<exit|exit>.
+
+=cut
+
+sub quit { exit; }
+
+
+=head3 connect
+
+B<Synopsis>: C<connect [$server]>
+
+Connect to an LDAP Server. If no server name is given, one is taken from C<$CONNPARAMS-E<gt>{SERVER}> (see L<Variables|variables> and the L<set|set> command).
+
+=cut
+
+sub connect {
+	my $server = shift;
+	$server = $Globals->{CONNPARAMS}{VALUE}{SERVER} unless defined($server);
+
+	undef $Globals->{_EFFECTIVECONNPARAMS}{VALUE}{BINDDN};
+
+	if (lc($Globals->{CONNPARAMS}{VALUE}{SSL}) eq 'ssl') {
+		unless (require Net::LDAPS) {
+			return 0;
+		}
+		$Globals->{LDAPCONN}{VALUE} = new Net::LDAPS(
+			$server,
+			port => $Globals->{CONNPARAMS}{VALUE}{PORT} || 636,
+			verify => 'none',
+			version => $Globals->{CONNPARAMS}{VALUE}{LDAPVERSION} || 3
+		);
+	} else {
+		$Globals->{LDAPCONN}{VALUE} = new Net::LDAP(
+			$server,
+			port => $Globals->{CONNPARAMS}{VALUE}{PORT} || 389,
+			version => $Globals->{CONNPARAMS}{VALUE}{LDAPVERSION} || 3
+		);
+	}
+
+	warn qq{Cannot connect to server. Message: '$@'} unless defined $Globals->{LDAPCONN}{VALUE};
+
+	if (lc($Globals->{CONNPARAMS}{VALUE}{SSL}) eq 'tls') {
+		my $result = $Globals->{LDAPCONN}{VALUE}->start_tls(verify => 'none');
+		warn "Cannot start TLS.  Message: '".$result->error."'" if $result->code;
+	}
+
+	foreach my $var (qw(SERVER SSL PORT LDAPVERSION)) {
+		$Globals->{_EFFECTIVECONNPARAMS}{VALUE}{$var} = $Globals->{CONNPARAMS}{VALUE}{$var};
+	}
+
+	return $Globals->{LDAPCONN}{VALUE};
+}
+
+
+=head3 bind
+
+B<Synopsis>: C<bind [$binddn]>
+
+Bind to the LDAP Server. Connects first, if not connected. If no C<$binddn> is given, the L<bind|bind> command uses C<$CONNPARAMS-E<gt>{BINDDN}>. If this variable is empty, binding will be anonymous.
+
+=cut
+
+sub bind {
+	undef $Globals->{_EFFECTIVECONNPARAMS}{VALUE}{BINDDN};
+	connect unless defined($Globals->{LDAPCONN}{VALUE});
+	return 1 unless defined($Globals->{LDAPCONN}{VALUE});
+
+	my $binddn = shift;
+	$binddn = $Globals->{CONNPARAMS}{VALUE}{BINDDN} unless defined $binddn;
+
+	my $result;
+	if ($binddn) {
+		# Do not save the password on the history
+		my $password;
+		my $attribs = $Term->Attribs;
+
+		# We will read the password, we need some privacy...
+		# If we have Gnu ReadLine, we use it with its ShadowRedisplay feature
+		# Otherwise, we will use Term::ReadKey
+		if (_isGnuReadLine and defined($attribs->{shadow_redisplay})) {
+			my $oldMinLine = $Term->MinLine(undef);
+			$attribs->{redisplay_function} = $attribs->{shadow_redisplay};
+			$password = $Term->readline('Password > ');
+			undef $attribs->{redisplay_function};
+			$Term->MinLine($oldMinLine);
+		} else {
+			require Term::ReadKey;
+			print STDERR 'Password >';
+			Term::ReadKey::ReadMode('noecho');
+			$password = Term::ReadKey::ReadLine(0);
+			$password =~ s/[\r\n]+$//;
+			Term::ReadKey::ReadMode('normal');
+			print STDERR "\n";
+		}
+
+		$result = $Globals->{LDAPCONN}{VALUE}->bind(
+			$binddn,
+			password => $password,
+			version => $Globals->{CONNPARAMS}{VALUE}{LDAPVERSION} || 3
+		);
+	} else {
+		print STDERR "Warning: Binding anonymously.\n";
+		$result = $Globals->{LDAPCONN}{VALUE}->bind(
+			anonymous => 1,
+			version => $Globals->{CONNPARAMS}{VALUE}{LDAPVERSION} || 3
+		);
+	}
+
+	if ($result->is_error) {
+		warn $result->error;
+		return 1;
+	}
+
+	$Globals->{_EFFECTIVECONNPARAMS}{VALUE}{BINDDN} = $binddn ? $binddn : '';
+
+	return 0;
+}
+
+
+=head3 unbind
+
+Unbind from the LDAP Server. The connection is invalid after an unbind. If you would like to rebind using a new DN, just do a new L<bind|bind> without unbinding.
+
+=cut
+
+sub unbind {
+	if ($Globals->{_EFFECTIVECONNPARAMS}{VALUE}{BINDDN}) {
+		my $LDAPCode = $Globals->{LDAPCONN}{VALUE}->unbind;
+		printf STDERR qq{LDAP error while unbinding. Code: %s. Message: %s\n},
+			$LDAPCode->code, $LDAPCode->error if $LDAPCode->is_error;
+	}
+	undef $Globals->{_EFFECTIVECONNPARAMS}{VALUE}{BINDDN};
+	undef $Globals->{LDAPCONN}{VALUE};
+}
+
+
+=head3 disconnect
+
+A synonym for L<unbind|unbind>.
+
+=cut
+
+sub disconnect { unbind; }
+
+
+=head3 id
+
+Display the DN used to bind. The value is one of:
+
+=over 8
+
+=item * 'Not bound', if not bound (even anonymously)
+
+=item * 'Bound anonymously' if bound anonymously
+
+=item * 'Bound as' the DN of an authenticated user
+
+=back
+
+=cut
+
+sub id {
+	if ($Globals->{_EFFECTIVECONNPARAMS}{VALUE}{BINDDN}) {
+		printf {$Output->{FILEHANDLE}} (qq{Bound as "%s"\n}, $Globals->{_EFFECTIVECONNPARAMS}{VALUE}{BINDDN});
+	} elsif (defined($Globals->{_EFFECTIVECONNPARAMS}{VALUE}{BINDDN})) {
+		print {$Output->{FILEHANDLE}} "Bound anonymously\n";
+	} else {
+		print {$Output->{FILEHANDLE}} "Not bound\n";
+	}
+}
+
+
+=head2 Utility commands
+
+=head3 echo
+
+B<Synopsis>: C<echo @list>
+
+Display each item in the list, appending a carriage return after each item.
+
+Example: C<echo scalar(@$ENTRIES)>
+
+=cut
+
+sub echo { print {$Output->{FILEHANDLE}} (join("\n", @_, '')); }
+
+
+=head3 loadrc
+
+B<Synopsis>: C<loadrc [E<lt>fileE<gt>]>
+
+Load and "run" the Perl file E<lt>fileE<gt> using the C<do> Perl function. If no filename is given, B<ldapsh> tries to load C<~/.ldapshrc>.
+
+=cut
+
+sub loadrc(;$) {
+	my $asked = shift;
+	my $rcfile = $asked || $Opts->{RCFile};
+
+	if (open RCFILE, $rcfile) {
+		eval(join('', <RCFILE>));
+		print STDERR "Error loading the file '$rcfile': $@\n" if $@;
+		close RCFILE;
+	} else {
+		print STDERR "Couldn't read the file '$asked'. Error: '$!'\n" if $asked;
+	}
+}
+
+
+=head3 source
+
+B<Synopsis>: C<source E<lt>fileE<gt>>
+
+A synonym for C<loadrc E<lt>fileE<gt>>.
+
+=cut
+
+sub source($) {
+	loadrc(shift);
+}
+
+
+=head3 diff
+
+TODO
+
+=cut
+
+sub diff($$) {
+	my ($e1, $e2) = (shift, shift);
+	my %attrs = ();
+	map {$attrs{$_}=1} $e1->attributes;
+	map {$attrs{$_}=1} $e2->attributes;
+	my %diffs = ();
+	foreach my $attr (keys(%attrs)) {
+		my $values1 = $e1->get_value($attr, asref => 1);
+		my $values2 = $e2->get_value($attr, asref => 1);
+	}
+}
+
+
+=head3 history
+
+B<Synopsis>: C<history>
+
+Print out each line of the command-line history, if B<Term::ReadLine::Gnu> is available.
+
+=cut
+sub history {
+	if (_isGnuReadLine) {
+		print {$Output->{FILEHANDLE}} join("\n", $Term->GetHistory()) . "\n";
+	}
+}
+
+
+=head3 reset
+
+Reset the B<Term::ReadLine> status.
+
+=cut
+
+sub reset {
+	_resetTermReadline();
+	$Term->crlf if _isGnuReadLine();
+}
+
+
+
+=head3 rdn
+
+B<Synopsis>: C<rdn 'E<lt>DNE<gt>'>
+
+Return (but do not print) the RDN of the DN that was given as a string argument.
+
+=cut
+
+sub rdn($) {
+	my ($rdn) = _splitdn(shift, 2);
+	return $rdn;
+}
+
+
+
+=head2 "Current working directory" commands
+
+=head3 cd
+
+B<Synopsis>: C<cd ['E<lt>RDNE<gt>' | 'E<lt>fooE<gt>', 'E<lt>barE<gt>' | '-']>
+
+Change the I<current working directory> to the specified RDN.
+You can specify multiple RDNs separated by commas (in the reverse order of the DN, to allow completion).
+You can also specify C<..> to go to the parent DN.
+If no RDN is specified, the I<current working directory> is not changed.
+
+If C<-> is specified, L<$OLDWD|"$OLDWD"> is swapped with the I<current working directory>.
+
+If C<foo> and C<bar> are specified, C<bar> will be substituted for C<foo>
+in the I<current working directory> and the result will be used to
+invoke L<setdn|setdn>. If C<foo> was not present in L<$CWD|"$CWD">,
+the I<current working directory> is not changed.
+
+See also the L<acd|acd>, L<setdn|setdn>, L<pushd|pushd> and L<popd|popd> commands.
+
+=cut
+
+sub cd {
+	_bindneeded() or return 0;
+
+	if (scalar @_ > 1) {
+		if (scalar @_ != 2) {
+			print STDERR "You may not specify more than two RDNs.\n";
+			return 0;
+		}
+		my $pre = shift;
+		my $post = shift;
+		# if you know a better way of doing this, let us know!
+		my $i = index($Globals->{CWD}{VALUE}, $pre);
+		if ($i < 0) {
+			print STDERR "Substitution failed.\n";
+			return 0;
+		}
+		my $NewPATH = substr($Globals->{CWD}{VALUE}, $i + length($pre));
+		if (!defined($NewPATH)) {
+			print STDERR "Substitution failed.\n";
+			return 0;
+		}
+		$NewPATH = substr($Globals->{CWD}{VALUE}, 0, $i).$post.$NewPATH;
+		return setdn($NewPATH);
+	}
+
+	my $SubPath = shift();
+	$SubPath = "" unless defined($SubPath);
+
+	if ($SubPath eq "-") {
+		return setdn($Globals->{OLDWD}{VALUE});
+	}
+
+	$SubPath =~ s/\s*,\s*$//;
+	$SubPath = join(',', reverse(split(/\s*,\s*/, $SubPath)));
+
+	# Now the $SubPath variable contains a SubDN where we wanna go, in
+	# the right order (since the "cd" command takes the RDNs in the
+	# reverse order)
+
+	my $BasePath = $Globals->{CWD}{VALUE};
+	while ($SubPath =~ s/(?:,|^)\s*\.\.\s*$//) {
+		(undef, $BasePath) = _splitdn($BasePath, 2);
+		unless ($BasePath) {
+			print STDERR "Cannot go up on the directory tree!\n";
+			return 0;
+		}
+	}
+
+	my $NewPATH = $SubPath;
+	$NewPATH .= ',' if $NewPATH;
+	$NewPATH .= $BasePath;
+
+	return setdn($NewPATH);
+}
+
+=head3 setdn
+
+B<Synopsis>: C<setdn 'E<lt>DNE<gt>'>
+
+Change the current directory to the specified DN. Unlike the L<cd|cd> command, the argument is a B<DN>, not an B<RDN>. This command has a synonym named L<acd|acd>.
+
+=cut
+
+sub setdn {
+	my $NewPATH = shift;
+	my $OldPATH = $Globals->{CWD}{VALUE};
+
+	my $result = _searchWEC(
+		base   => $NewPATH,
+		scope  => 'base',
+		attrs  => ['1.1'],
+		filter => '(objectclass=*)'
+	);
+	return unless defined($result);
+
+	if (_isReallyLDAPError($result->code)) {
+		if ($result->code == Net::LDAP::Constant::LDAP_NO_SUCH_OBJECT()) {
+			print STDERR "Cannot change BaseDN. No such subpath.\n";
+			return 0;
+		} else {
+			printf STDERR "Cannot change BaseDN. LDAP Error no %s (%s)\n", $result->code, $result->error;
+			return 0;
+		}
+	} else {
+		my @entries = $result->entries;
+		if (scalar(@entries) == 1) {
+			$Globals->{CWD}{VALUE} = $NewPATH;
+			$Globals->{OLDWD}{VALUE} = $OldPATH;
+			return 1;
+		} else {
+			print STDERR sprintf(qq{Cannot change BaseDN. Search returned %s entries\n}, scalar(@entries));
+			return 0;
+		}
+	}
+}
+
+=head3 acd
+
+B<Synopsis>: C<acd 'E<lt>DNE<gt>'>
+
+A synonym for L<setdn|setdn>. (The name is an abbreviaton of "B<a>bsolute B<cd>".)
+
+=cut
+
+sub acd {
+	setdn(@_);
+}
+
+
+
+=head3 pushd
+
+B<Synopsis>: C<pushd ['E<lt>RDNE<gt>' | 'E<lt>fooE<gt>', 'E<lt>barE<gt>' | '-']>
+
+Perform the same action as the L<cd|cd> command. If the action succeeds, the old working directory is stored on a stack (which can be shown using L<dirs|dirs>). It can be restored using L<popd|popd>.
+
+If no RDN is given, the I<current working directory> will be pushed onto the stack.
+
+=cut
+
+sub pushd {
+	my $cwd = $Globals->{CWD}{VALUE};
+	my $status = cd(@_);
+	if ($status) {
+		unshift(@{$Globals->{_DIRSSTACK}{VALUE}}, $cwd);
+		print STDERR "Old working directory: '$cwd'\n";
+	}
+	return $status;
+}
+
+
+
+=head3 popd
+
+B<Synopsis>: C<popd>
+
+Pop a directory from the directory stack (see L<pushd|pushd>) and change the I<current working directory> to the popped directory.
+
+=cut
+
+
+sub popd {
+	my $cwd = $Globals->{CWD}{VALUE};
+	my $nwd = shift(@{$Globals->{_DIRSSTACK}{VALUE}});
+
+	my $status;
+
+	if (defined($nwd)) {
+		my $status = setdn($nwd);
+		if ($status) {
+			print STDERR "New working directory: '$nwd'.\n";
+		}
+	} else {
+		print STDERR "The directory stack is empty.\n";
+		$status = 0;
+	}
+
+	return $status;
+}
+
+
+=head3 dirs
+
+B<Synopsis>: C<dirs>
+
+Show the directory stack (see L<pushd|pushd> and L<popd|popd>).
+
+=cut
+
+sub dirs {
+	print {$Output->{FILEHANDLE}} join('', map {"$_\n"} @{$Globals->{_DIRSSTACK}{VALUE}}) . "\n";
+}
+
+
+=head3 pwd
+
+Display the I<current working directory>.
+
+=cut
+
+sub pwd {
+	print {$Output->{FILEHANDLE}} $Globals->{CWD}{VALUE} . "\n";
+}
+
+
+=head2 Local filesystem
+
+=head3 lcd
+
+B<Synopsis>: C<lcd 'E<lt>localdirE<gt>'>
+
+Change the local (filesystem) working directory.
+
+=cut
+
+sub lcd {
+	if(Cwd::chdir @_) {
+		return 1;
+	} else {
+		printf STDERR "Cannot change directory.\n";
+		return 0;
+	}
+}
+
+
+=head3 lpwd
+
+B<Synopsis>: C<lpwd 'E<lt>localdirE<gt>'>
+
+Display the name of the local (filesystem) working directory.
+
+=cut
+
+sub lpwd {
+	print {$Output->{FILEHANDLE}} Cwd::getcwd() . "\n";
+}
+
+
+
+=head2 Search-only commands
+
+=head3 usearch
+
+B<Synopsis>: C<usearch '[/BaseDN][?[Attributes][?[Scope][?Filter]]]]'>
+
+Search using an LDAP URL. The LDAP URL does not contain Host and Port since you must be connected and bound prior to running this command.
+
+The resulting entries are stored in the L<$ENTRIES|"$ENTRIES"> array reference.
+
+Returns a reference to an array containing the B<Net::LDAP::Entry> objects found.
+
+=cut
+
+sub usearch {
+	require URI;
+	my $url = shift;
+
+	my $ur = new URI($url, 'ldap');
+
+	my $basedn = $ur->dn || $Globals->{CWD}{VALUE};
+	my $filter = $ur->filter;
+	my $scope  = $ur->_scope || 'one';
+	my @attr   = $ur->attributes;
+
+	my $entries = _search(
+		BaseDN => $basedn,
+		Scope  => $scope,
+		Filter => $filter,
+		Attrs  => \@attr
+	);
+
+	if (defined($entries)) {
+		my ($n1, $n2) = (scalar(@$entries), scalar(@{$Globals->{ENTRIES}{VALUE}}));
+		print STDERR "$n1 entries found.\n";
+		print STDERR "$n2 entries in \$ENTRIES.\n" if ($n1 != $n2);
+	}
+
+	return $entries;
+}
+
+
+=head3 search
+
+B<Synopsis>: C<search E<lt>expansionE<gt>>
+
+Search for the entries matched by the expansion (see L<Expansion|"Expansion of LDAP DNs and Filters">).
+Does not dump the entries themselves, only a summary of the search results.
+
+Returns a reference to an array containing the B<Net::LDAP::Entry> objects found.
+
+=cut
+
+sub search {
+	my $entries = _entriesExpander undef, @_;
+	return 0 unless defined $entries;
+
+	if (defined($entries)) {
+		my ($n1, $n2) = (scalar(@$entries), scalar(@{$Globals->{ENTRIES}{VALUE}}));
+		print STDERR "$n1 entries found.\n";
+		print STDERR "$n2 entries in \$ENTRIES.\n" if ($n1 != $n2);
+	}
+
+	return $entries;
+}
+
+
+=head2 Output entries
+
+=head3 ldif
+
+B<Synopsis>: C<ldif E<lt>expansionE<gt>>
+
+Display the entries matched by the expansion (see L<Expansion|"Expansion of LDAP DNs and Filters">) using the LDIF format.
+See also L<cat|cat>.
+
+Returns a reference to an array containing the B<Net::LDAP::Entry> objects found.
+
+=cut
+
+sub ldif {
+	my $entries = _entriesExpander undef, @_;
+	return 0 unless defined $entries;
+
+	require Net::LDAP::LDIF;
+	Net::LDAP::LDIF->new($Output->{FILEHANDLE},"w")->write(@$entries);
+	return $entries;
+}
+
+
+=head3 cat
+
+B<Synopsis>: C<cat E<lt>expansionE<gt>>
+
+A synonym for L<ldif|ldif>.
+
+=cut
+
+sub cat {
+	return(ldif @_);
+}
+
+
+=head3 dump
+
+B<Synopsis>: C<dump E<lt>expansionE<gt>>
+
+Dump the entries matched by the expansion (see L<Expansion|"Expansion of LDAP DNs and Filters">) in a relatively human-readable format.
+
+=cut
+
+sub dump {
+	my $entries = _entriesExpander undef, @_;
+	return 0 unless defined $entries;
+
+	foreach (@$entries) { $_->dump; }
+	return 1;
+}
+
+
+=head3 list
+
+B<Synopsis>: C<list ['-a',] ['-dn',] E<lt>expansionE<gt>>
+
+Display the attribute values of the entries matched by the expansion (see L<Expansion|"Expansion of LDAP DNs and Filters">) in a list format (easy to parse).
+
+Arguments:
+
+=over 8
+
+=item * C<-a>: Show the attribute names
+
+=item * C<-dn>: Show the DN
+
+=back
+
+=cut
+
+sub list {
+	my $localArgs = {};
+	my $entries = _entriesExpander [$localArgs, 'a', 'dn'], @_;
+	return 0 unless defined $entries;
+	
+	foreach my $entry (@$entries) {
+		if ($localArgs->{'dn'}) {
+			_printattr('dn', $entry->dn, $localArgs->{'a'});
+		}
+		foreach my $attr ($entry->attributes) {
+			my $values = $entry->get_value($attr, asref=>1);
+			next unless defined $values;
+			foreach my $value (@$values) {
+				_printattr($attr, $value, $localArgs->{'a'});
+			}
+		}
+	}
+	return 1;
+}
+
+
+
+=head3 csv
+
+B<Synopsis>: C<csv [E<lt>optionsE<gt>,] E<lt>expansionE<gt>>
+
+Display the entries matched by the expansion (see L<Expansion|"Expansion of LDAP DNs and Filters">) in a CSV format.
+
+The first argument can be a list of options to tell how to format the file. If it's given, it's a hash reference.
+
+B<Exemple>: C<csv -fs =E<gt> "\t", -dn, $ENTRIES>
+
+The possible options are:
+
+=over 8
+
+=item * C<-fs>: Field Separator. Default: ";"
+
+=item * C<-vs>: Value separator (for multi-valued attributes). Default: "|"
+
+=item * C<-nomv>: For multi-valued attributes, show only one attribute value.
+
+=item * C<-dn>: Output the DN of the entries.
+
+=back
+
+=cut
+
+sub csv {
+	my $localArgs = {fs => ';', vs => '|', 'mv' => 1, 'dn' => 0};
+	my $entries = _entriesExpander [$localArgs, 'fs=s', 'vs=s', 'mv!', 'dn!'], @_;
+
+	return 0 unless defined $entries;
+	
+	my %fields;
+	foreach my $entry (@$entries) {
+		map {$fields{$_}=1} $entry->attributes;
+	}
+
+	my @fields = sort(keys(%fields));
+	unshift @fields, 'DN' if $localArgs->{'dn'};
+
+	print {$Output->{FILEHANDLE}} join($localArgs->{'fs'}, @fields) . "\n";
+	foreach my $entry (@$entries) {
+		print {$Output->{FILEHANDLE}} join(
+			$localArgs->{'fs'},
+			map {
+				my @vals = $_ eq 'DN' ? ($entry->dn()) : sort($entry->get_value($_));
+				if ($localArgs->{'mv'}) {
+					join($localArgs->{'vs'}, @vals);
+				} else {
+					defined($vals[0]) ? $vals[0] : '';
+				}
+			} @fields
+		) . "\n";
+	}
+	return 1;
+}
+
+
+=head3 ls
+
+B<Synopsis>: C<ls ['-C',|'-m',] ['-l',] E<lt>expansionE<gt>>
+
+List the DNs of the entries matched by the expansion (see L<Expansion|"Expansion of LDAP DNs and Filters">).
+Entries are displayed in the order received (no sorting is performed),
+with one entry per line.
+
+The C<-C> argument requests multi-column output (the default is to print only one column per line).
+B<ldapsh> uses as many columns as will fit into the character width of the terminal (see L<$COLUMNS|"$COLUMNS">).
+If C<-m> is also specified, columns will be separated by L<$DNSEP|"$DNSEP"> (the default string is "; ").
+The separator is omitted from the last entry on each line.
+
+The C<-m> argument requests that all entries be printed on a single line,
+with entries separated by the L<$DNSEP|"$DNSEP"> string (the default string is "; ").
+The separator appears after every entry (including the last one).
+
+=cut
+
+sub ls {
+	my $localArgs = {C => 0, m => 0};
+	my $entries = _entriesExpander [$localArgs, 'C', 'm', 'l'], @_;
+	return 0 unless defined $entries;
+
+	if ($localArgs->{'C'} && $Globals->{COLUMNS}{VALUE} > 0) {
+		# determine the width of the longest entry
+		my $i;
+		my $num;
+		my $width = 0;
+		my @display = ();
+		my $sep = $localArgs->{'m'} ? $Globals->{DNSEP}{VALUE} : " ";
+		my $auxwidth = length($sep);
+		foreach my $entry (@$entries) {
+			unshift @display, $localArgs->{'l'} ? $entry->dn : rdn($entry->dn);
+			$num = length($display[0]);
+			if ($num > $width) {
+				$width = $num;
+			}
+		}
+		# $width is max width of any entry.
+		# $num becomes the number of entries per line.
+		$num = int(($Globals->{COLUMNS}{VALUE}+$auxwidth)/($width+$auxwidth));
+
+		$auxwidth += $width;
+		for ($i = 0; @display; $i++) {
+			if (@display == 1 || ($i+1) % $num == 0) {
+				printf {$Output->{FILEHANDLE}} ("%-${width}s\n", shift @display);
+			}
+			else {
+				printf {$Output->{FILEHANDLE}} ("%-${auxwidth}s", (shift @display).$sep);
+			}
+		}
+	}
+	elsif ($localArgs->{'m'}) {
+		foreach my $entry (@$entries) {
+			printf {$Output->{FILEHANDLE}} ("%s$Globals->{DNSEP}{VALUE}", $localArgs->{'l'} ? $entry->dn : rdn($entry->dn));
+		}
+		if (@$entries) {
+			printf "\n";
+		}
+	}
+	else {
+		foreach my $entry (@$entries) {
+			printf {$Output->{FILEHANDLE}} ("%s\n", $localArgs->{'l'} ? $entry->dn : rdn($entry->dn));
+		}
+	}
+	print STDERR "-----\n" . scalar(@$entries) . " entries found.\n";
+
+	return 1;
+}
+
+
+=head3 redir
+
+B<Synopsis>: C<redir ['E<lt>specE<gt>']>
+
+Redirect ldapsh's output. C<spec> is used as a parameter to the C<open>
+function, so you can specify, for example:
+
+=over 8
+
+=item * C<redir 'E<gt> myfile.out'>
+
+=item * C<redir '| grep toto E<gt> myfile.out'>
+
+=item * C<redir '| more'>
+
+=back
+
+If no argument is given, the current redirection will be displayed.
+
+=cut
+
+sub redir {
+	my $out = shift;
+	my $previous = $Output;
+
+	if (!defined $out) {
+		print STDERR $Output->{NAME} . "\n";
+		return $Output;
+	}
+
+	my $new = {
+		NAME => $out,
+		FILEHANDLE => undef
+	};
+
+	if (open($new->{FILEHANDLE}, $out)) {
+		print STDERR "Warning: redirection destination did not start with | or >\n" unless $out =~ /^[|>]/;
+	}
+	else {
+		print STDERR "Error: could not change redirection.\n";
+		return $previous;
+	}
+
+	$Output = $new;
+	$Output->{FILEHANDLE}->autoflush(1);
+
+	return $previous;
+}
+
+
+=head3 sink
+
+B<Synopsis>: C<sink ['E<lt>specE<gt>']>
+
+A synonym for C<redir ['E<lt>specE<gt>']>.
+
+=cut
+
+sub sink($) {
+	redir(shift);
+}
+
+
+=head3 noredir
+
+B<Synopsis>: C<noredir>
+
+No longer perform any of the redirections that were previously specified using L<redir|redir>.
+
+=cut
+
+sub noredir {
+	my $previous = $Output;
+	$Output = {
+		NAME => "STDOUT",
+		FILEHANDLE => \*STDOUT
+	};
+	return $previous;
+}
+
+=head3 nosink
+
+B<Synopsis>: C<nosink>
+
+A synonym for C<noredir]>.
+
+=cut
+
+sub nosink {
+	noredir;
+}
+
+
+=head2 Changing entries
+
+=head3 create
+
+B<Synopsis>: C<create ['-d',|'-k',|'-m',|'-n',|'-q',|'-v',] 'E<lt>RDN|DNE<gt>' [,'E<lt>objectclassE<gt>' ...]>
+
+Create a new LDIF file based on the specified distinguished named and object
+classes. By default, the LDIF file will be populated with attributes to comply
+with the schema supplied by the LDAP server. A text editor will then be invoked
+on the LDIF file. In the file is subsequently edited, a new LDAP entry will be
+created. Upon success, the LDIF file is deleted. Note: you must be sure to
+create a valid LDIF file from the template that is provided to you. If you do
+not, an entry cannot be created. If this error occurs, your invalid LDIF file
+will be preserved for your convenience.
+
+By default, the LDIF file is populated with all attributes specified in the schema
+('MUST' and 'MAY'). When the C<-m> parameter is given, only 'MUST' attributes
+are included. The C<-n> parameter prevents schema-based population.
+The C<-q> parameter suppresses informational comments about each attribute
+while C<-v> prints verbose information about each attribute.
+
+The C<-k> parameter prevents deletion of the LDIF file (regardless of success),
+while C<-d> forces deletion (regardless of failure).
+
+=cut
+
+sub create(@) {
+	my @entries;
+	my @successes;
+	my %localArgs = ('d' => 0, 'k' => 0, 'm' => 0, 'n' => 0, 'q' => 0, 'v' => 0);
+
+	@ARGV = @_;
+	Getopt::Long::GetOptions(\%localArgs, keys %localArgs);
+
+	my $dn = shift(@ARGV);
+	unless ($dn) {
+		print STDERR "A distinguished name is required.\n";
+		return undef;
+	}
+
+	_bindneeded() or return undef;
+
+	# Set up temp file (LDIF)
+	require Net::LDAP::LDIF;
+	require File::Temp;
+
+	my ($fh, $tempfile) = File::Temp::tempfile('LDAPShell_vi_XXXXXXXXXX', SUFFIX => '.ldif');
+
+	# Print DN
+	my @parts = _splitdn($dn,2);
+	if (scalar(@parts) == 1) {
+		print $fh "dn: $dn, $CWD\n";
+	}
+	else {
+		print $fh "dn: $dn\n";
+	}
+	@parts = split('=',$parts[0]);
+	# Deal with objectclasses
+	my %attrs = ();
+	if (@ARGV > 0) {
+		$attrs{"objectclass"} = 1;
+		foreach (@ARGV) {
+			print $fh "objectclass: $_\n"; # caution: user might have supplied bad data
+		}
+		if (!$localArgs{n}) {
+			my $schema = $Globals->{LDAPCONN}{VALUE}->schema(dn=>"cn=Subschema");
+			if ($schema) {
+				foreach (@ARGV) {
+					my $objectclass = $_;
+					my @must = $schema->must($objectclass);
+					foreach (@must) {
+						my %attr = %$_;
+						my $name = lc($attr{name});
+						if (!$attrs{$name}) {
+							if ($localArgs{v}) {
+								print $fh "# MUST $objectclass \"$attr{desc}\" ($name)\n";
+							}
+							elsif (!$localArgs{q}) {
+								print $fh "# MUST\n";
+							}
+							if ("$name" eq "$parts[0]") {
+								print $fh "$name: $parts[1]\n";
+							}
+							else {
+								print $fh "$name: \n";
+							}
+							$attrs{$name} = 1;
+						}
+					}
+				}
+				if (!$localArgs{m}) {
+					foreach (@ARGV) {
+						my $objectclass = $_;
+						my @must = $schema->may($objectclass);
+						foreach (@must) {
+							my %attr = %$_;
+							my $name = lc($attr{name});
+							if (!$attrs{$name}) {
+								if ($localArgs{v}) {
+									print $fh "# MAY $objectclass \"$attr{desc}\" ($name)\n";
+								}
+								elsif (!$localArgs{q}) {
+									print $fh "# MAY\n";
+								}
+								if ("$name" eq "$parts[0]") {
+									print $fh "$name: $parts[1]\n";
+								}
+								else {
+									print $fh "$name: \n";
+								}
+								$attrs{$name} = 1;
+							}
+						}
+					}
+				}
+			}
+			else {
+				print $fh "# Server did not provide a schema (do you have permission?).\n";
+				print $fh "$parts[0]: $parts[1]\n";
+			}
+		}
+	}
+	if (!$attrs{$parts[0]}) {
+		print $fh "$parts[0]: $parts[1]\n";
+	}
+
+	close $fh;
+	my $mtime = (stat($tempfile))[9];
+	my $cleanup = 1; # success => unlink $tempfile by default
+
+	system($Globals->{EDITOR}{VALUE}, $tempfile);
+	if ( (stat($tempfile))[9] > $mtime ) {
+		my $ldif = Net::LDAP::LDIF->new($tempfile, "r", onerror => undef);
+		while (not $ldif->eof()) {
+			my $entry = $ldif->read_entry();
+			if ($ldif->error()) {
+				printf STDERR "Encountered error reading LDIF format: [[%s]]\n", $ldif->error();
+				if ($localArgs{d}) {
+					unlink $tempfile;
+					print STDERR "\n";
+				}
+				else {
+					print STDERR "LDIF stored in $tempfile\n\n";
+				}
+				return undef;
+			} elsif (defined($entry)) {
+				push(@entries, $entry);
+			}
+		}
+		if (@entries > 0) {
+			foreach (@entries) {
+				my $result = $Globals->{LDAPCONN}{VALUE}->add($_);
+				if ($result->is_error) {
+					printf STDERR qq{LDAP Error adding entry '%s'. Code:%s. Message:%s\n},
+						$_->dn, $result->code, $result->error;
+					# failure => keep by default
+					$cleanup = 0;
+					last;
+				}
+				push(@successes, $_);
+			}
+		}
+	}
+	else {
+		# no user mods => delete by default
+	}
+
+	if ($cleanup) {
+		if ($localArgs{k}) {
+			print STDERR "LDIF stored in $tempfile\n\n";
+		}
+		else {
+			unlink $tempfile;
+		}
+	}
+	else {
+		if ($localArgs{d}) {
+			unlink $tempfile;
+		}
+		else {
+			print STDERR "LDIF stored in $tempfile\n\n";
+		}
+	}
+
+	return @successes;
+}
+
+=head3 new
+
+A synonym for L<create|create>.
+
+=cut
+
+sub new {
+	create(@_);
+}
+
+=head3 mkdir
+
+A synonym for L<create|create>.
+
+=cut
+
+sub mkdir {
+	create(@_);
+}
+
+=head3 remove
+
+B<Synopsis>: C<remove ['-a',] ['-f',] E<lt>expansionE<gt>>
+
+Remove entries from the directory. Unless the C<-f> parameter is given, the
+command will prompt you prior to starting and will stop if an error is
+encountered. You may specify C<-r>, too, as a normal part of expansion (see
+L<Expansion|"Expansion of LDAP DNs and Filters">). If C<-a> is specified, an attempt will be made to
+delete leaf entries before their parent entries. Thus, to delete an entire
+subtree, you might try this:
+
+  cd 'cn=Old Directory Subtree'
+  remove '-ar'
+  cd '-'
+
+=cut
+
+sub remove {
+	my $localArgs = {};
+	my $entries = _entriesExpander [$localArgs, 'a', 'f'], @_;
+	return 0 unless defined $entries;
+	if (@$entries < 1) {
+		printf STDERR "No entries removed.\n";
+		return 0;
+	}
+	unless ($localArgs->{'f'}) {
+		return 0 unless _askBool("Delete ".scalar(@$entries)." entries?", 0);
+	}
+	if ($localArgs->{'a'}) { # sort
+		my %hash = map { join(',', reverse(_splitdn($_->dn, -1))) => $_ } @$entries;
+		foreach my $key (sort {$b cmp $a} keys %hash) {
+			my $entry = $hash{$key};
+			my $result = $Globals->{LDAPCONN}{VALUE}->delete($entry);
+			if ($result->is_error) {
+				printf STDERR qq{LDAP error removing entry '%s'. Code:%s. Message:%s\n},
+					$entry->dn, $result->code, $result->error;
+				return 0 unless $localArgs->{'f'};
+			}
+		}
+	}
+	else {
+		foreach my $entry (@$entries) {
+			my $result = $Globals->{LDAPCONN}{VALUE}->delete($entry);
+			if ($result->is_error) {
+				printf STDERR qq{LDAP error removing entry '%s'. Code:%s. Message:%s\n},
+					$entry->dn, $result->code, $result->error;
+				return 0 unless $localArgs->{'f'};
+			}
+		}
+	}
+	return 1;
+}
+
+=head3 rm
+
+A synonym for L<remove|remove>.
+
+=cut
+
+sub rm {
+    remove(@_);
+}
+
+=head3 cp
+
+B<Synopsis>: C<cp 'E<lt>from-expansionE<gt>'|'*' 'E<lt>toE<gt>'>
+
+Copy an entry to a new DN or copy a set of entries to new locations in the
+LDAP tree.
+
+C<from-expansion> will be expanded in the usual way 
+(see L<Expansion|"Expansion of LDAP DNs and Filters">), with the addition that C<*> corresponds to 
+the filter C<(objectclass=*)>.
+
+If the C<to> parameter is an RDN, a single object will be copied to a new RDN within 
+the same level of the LDAP tree, and you will get an error if C<from-expansion>
+expands to more than one object.
+
+If C<to> is a DN, all the objects from C<from-expansion> will be be copied to
+the new location, using C<to> as a base DN and retaining their old RDNs.
+This makes it convenient to copy many objects.
+
+B<TODO>: With C<to> being a DN, we may want to copy entire subtrees.
+Currently we only copy objects as leaves.
+
+=cut
+
+sub cp($$) {
+	my ($from, $to) = @_;
+	$from = "objectclass=*" if ($from eq "*");
+	my $localcopy = (scalar(_splitdn($to,2)) == 1); #I.e $to is an RDN.
+	my $entries = _entriesExpander undef, $from;
+	if (scalar(@$entries) != 1 && $localcopy) {
+		print STDERR "$from does not exist or is ambiguous.\n";
+		return undef;
+	}
+
+	foreach my $entry (@$entries) {
+		my ($oldrdn, $oldpath) = _splitdn($entry->dn, 2);
+		my ($newrdn) = _splitdn($to, 2);
+		my ($old_rdn_attr, $old_rdn_attr_val) = split("=", $oldrdn, 2);
+		my ($new_rdn_attr, $new_rdn_attr_val) = split("=", $newrdn, 2);
+
+		my $newdn;
+		if ($localcopy) {
+			$newdn = "$newrdn,$oldpath";
+		} else {
+			$newdn = "$oldrdn,$to";
+		}
+
+		$entry->dn($newdn);
+
+		if ($localcopy) {
+			if ($entry->exists($old_rdn_attr)) {
+				$entry->delete($old_rdn_attr)
+			}
+			$entry->add($new_rdn_attr => $new_rdn_attr_val);
+		}
+
+		my $result = $Globals->{LDAPCONN}{VALUE}->add($entry);
+		if ($result->is_error) {
+			printf STDERR qq{LDAP Error updating entry '%s'. Code:%s. Message:%s\n},
+			$entry->dn, $result->code, $result->error;
+			return undef;
+		}
+		$Globals->{ENTRIES}{VALUE} = [];
+	}
+}
+
+=head3 rename
+
+B<Synopsis>: C<rename 'E<lt>from-expansionE<gt>'|'*' 'E<lt>toE<gt>'>
+
+Rename an entry with a new RDN or move a set of entries to new locations in the
+LDAP tree.
+
+C<from-expansion> will be expanded in the usual way 
+(see L<Expansion|"Expansion of LDAP DNs and Filters">), with the addition that C<*> corresponds to 
+the filter C<(objectclass=*)>.
+
+If your directory server does not allow subtrees to be moved, you may have to
+copy entries to a new location and then remove the old subtree (see L<cp|cp>
+and L<remove|remove>).
+
+=cut
+
+sub rename($$) {
+	my ($from, $to) = @_;
+	$from = "objectclass=*" if ($from eq "*");
+	my $entries = _entriesExpander undef, $from;
+	if (scalar(@$entries) > 1) {
+		foreach my $entry (@$entries) {
+			my $rdn = rdn($entry->dn);
+			my $result = $Globals->{LDAPCONN}{VALUE}->moddn($entry, newrdn => $rdn, newsuperior => $to);
+			if ($result->is_error) {
+				printf STDERR qq{LDAP error moving '%s'. Code:%s. Message:%s\n},
+					$entry->dn, $result->code, $result->error;
+				return 0;
+			}
+		}
+	}
+	elsif (scalar(@$entries) == 1 ) {
+		my $entry = @$entries[0];
+		if (scalar(_splitdn($to, 2)) > 1) {
+			my $rdn = rdn($entry->dn);
+			my $result = $Globals->{LDAPCONN}{VALUE}->moddn($entry, newrdn => $rdn, newsuperior => $to);
+			if ($result->is_error) {
+				printf STDERR qq{LDAP error moving '%s'. Code:%s. Message:%s\n},
+					$entry->dn, $result->code, $result->error;
+				return 0;
+			}
+		}
+		else {
+			my $result = $Globals->{LDAPCONN}{VALUE}->moddn($entry, newrdn => $to, deleteoldrdn => 1);
+			if ($result->is_error) {
+				printf STDERR qq{LDAP error renaming '%s'. Code:%s. Message:%s\n},
+					$entry->dn, $result->code, $result->error;
+				return 0;
+			}
+		}
+	}
+	else {
+		printf STDERR "No entries were renamed or moved.\n";
+		return 0;
+	}
+	return 1;
+}
+
+=head3 mv
+
+A synonym for L<rename|rename>.
+
+=cut
+
+sub mv($$) {
+    rename(shift, shift);
+}
+
+
+=head2 Changing attributes
+
+=head3 vi
+
+B<Synopsis>: C<vi E<lt>expansionE<gt>>
+
+Show the entries matched by the expansion (see L<Expansion|"Expansion of LDAP DNs and Filters">) in a text editor.
+Entries are saved to a temporary file for editing in the LDIF format.
+If the temporary file is modified, it will be re-read as an LDIF file and used to modify
+the search results. Any changes can be viewed using L<changes|changes> and will need to
+be committed using L<commit|commit>.
+BUG (TODO): If you add an attribute to an entry (so, if you add a value to an attribute
+that hadn't previously a value), it will not be detected. We should do a two-way check.
+
+=cut
+
+sub vi {
+	my $entries = _entriesExpander undef, @_;
+	return 0 unless defined $entries;
+
+	require Net::LDAP::LDIF;
+	require File::Temp;
+	
+	my (undef, $tempfile) = File::Temp::tempfile('LDAPShell_vi_XXXXXXXXXX', SUFFIX => '.ldif');
+	Net::LDAP::LDIF->new($tempfile,"w")->write(@$entries);
+	my $mtime = (stat($tempfile))[9];
+	
+	system($Globals->{EDITOR}{VALUE}, $tempfile);
+	
+	# If modified, load as LDIF entry and compare to the same DNs in our directory (if they exist).
+	if ( (stat($tempfile))[9] > $mtime ) {
+		my $ldif = Net::LDAP::LDIF->new($tempfile, "r", onerror => undef);
+		my %hash = map { $_->dn => $_ } @$entries;
+		my $examined = 0;
+		while (not $ldif->eof()) {
+			my $entry = $ldif->read_entry();
+			if ($ldif->error()) {
+				printf STDERR "Encountered error reading LDIF format: [[%s]]\n\n", $ldif->error();
+				last;
+			} elsif (defined($entry)) {
+				$examined++;
+				print STDERR "Comparing " . $entry->dn . "...";
+				if (defined $hash{$entry->dn}) {
+					my $original = $hash{$entry->dn};
+					my %attrs = map { lc $_ => 1 } ($original->attributes(), $entry->attributes()); # unique keys
+					foreach my $attr (sort(keys %attrs)) {
+						my $pre_values = $original->get_value($attr, asref => 1 );
+						my $post_values = $entry->get_value($attr, asref => 1 );
+						if ($pre_values && $post_values) {
+							if (scalar(@$pre_values) != scalar(@$post_values)) {
+								foreach my $value ($post_values) {
+									$original->replace($attr => $value);
+								}
+							}
+							else { # try harder
+								my @a = sort @$pre_values;
+								my @b = sort @$post_values;
+								foreach my $i (0 .. scalar(@a)-1) {
+									if ($a[$i] ne $b[$i]) {
+										foreach my $value ($post_values) {
+											$original->replace($attr => $value);
+										}
+										last;
+									}
+								}
+							}
+						}
+						elsif ($pre_values) {
+							$original->delete($attr);
+						}
+						elsif ($post_values) {
+							foreach my $value ($post_values) {
+								$original->add($attr => $value);
+							}
+						}
+					}
+					
+					my $changes = $original->{changes};
+					if (defined($changes) and scalar(@$changes)) {
+						print STDERR "changed\n\n";
+					}
+					else {
+						print STDERR "no modifications.\n\n";
+					}
+				}
+				else {
+					print STDERR "skipped.\n";
+					print STDERR "Warning: cannot change a DN or add an entry using vi.\n\n";
+				}
+			}
+		}
+		unless ($ldif->error() or $examined >= scalar(@$entries)) {
+			print STDERR "Warning: some entries were absent from the edited file.\n\n";
+		}
+	}
+	unlink $tempfile;
+	return $entries;
+}
+
+
+=head3 change
+
+A synonym for L<apply|apply>.
+
+=cut
+
+sub change {
+	apply(@_);
+}
+
+
+=head3 apply
+
+B<Synopsis>: C<apply {E<lt>your codeE<gt>} [$entries]>
+
+Apply some code to the local copies of the LDAP entries.
+You can use the variable C<$_> in your code (it will refer to an B<Net::LDAP::Entry> object).
+
+If no entries are given, the L<apply|apply> command uses the L<$ENTRIES|"$ENTRIES"> global variable.
+
+The entries are merely locally modified!
+You must L<commit|commit>!
+You can see the changes using the L<changes|changes> command.
+
+Example: C<apply {$_-E<gt>replace('department', ['New Dept']) if $_-E<gt>get_value('department') =~ /CCSR/}>
+
+=cut
+
+sub apply(&;$) {
+	my $code = shift;
+	my $entries = shift || $Globals->{ENTRIES}{VALUE};
+
+	_haveentries($entries) or return 0;
+
+	map { &$code; } @$entries;
+	return 1;
+}
+
+
+=head3 add
+
+B<Synopsis>: C<add 'E<lt>attributeE<gt>', 'E<lt>valueE<gt>' ...>
+
+Add one or more new attributes to the entries in the L<$ENTRIES|"$ENTRIES"> global variable.
+
+The values will be added to the values that already exist for the given attribute.
+
+The entries are locally modified! You must L<commit|commit>! You can see the changes
+done using the L<changes|changes> command.
+
+Example: C<add 'givenName', 'Bob', 'Robert'>
+
+=cut
+
+sub add {
+	my $entries = $Globals->{ENTRIES}{VALUE};
+
+	_haveentries() or return 0;
+
+	if (scalar @_ < 2) {
+		print STDERR "You must supply both an attribute and some values.\n";
+		return 0;
+	}
+
+	my $attr = shift;
+
+	map { $_->add($attr, [@_]) } @$entries;
+	return 1;
+}
+
+
+=head3 replace
+
+B<Synopsis>: C<replace 'E<lt>attributeE<gt>', 'E<lt>valueE<gt>' ...>
+
+Similar to L<add|add>, except that the given values will replace any values that
+already exist for the given attribute.
+
+The entries are merely locally modified! You must L<commit|commit>! You can see the changes
+using the L<changes|changes> command.
+
+Example: C<replace 'givenName', 'Bill', 'William'>
+
+=cut
+
+sub replace {
+	my $entries = $Globals->{ENTRIES}{VALUE};
+
+	_haveentries() or return 0;
+
+	if (scalar @_ < 2) {
+		print STDERR "You must supply both an attribute and some values.\n";
+		return 0;
+	}
+
+	my $attr = shift;
+
+	map { $_->replace($attr, [@_]) } @$entries;
+	return 1;
+}
+
+
+=head3 delete
+
+B<Synopsis>: C<delete 'E<lt>attributeE<gt>'[, 'E<lt>valueE<gt>' ...]>
+
+Delete the values of given attribute from the the L<$ENTRIES|"$ENTRIES"> global variable.
+If no values are given, the entire attribute will be deleted.
+
+The entries are locally modified! You must L<commit|commit>! You can see the changes
+done using the L<changes|changes> command.
+
+Example: C<delete 'givenName'>
+
+=cut
+
+sub delete {
+	my $entries = $Globals->{ENTRIES}{VALUE};
+
+	_haveentries() or return 0;
+
+	if (scalar @_ < 1) {
+		print STDERR "You must at least supply an attribute name.\n";
+		return 0;
+	}
+
+	my $attr = shift;
+
+	map { $_->delete($attr, [@_]) } @$entries;
+	return 1;
+}
+
+
+=head3 changes
+
+B<Synopsis>: C<changes [$entries]>
+
+Show the changes done to the entries given in the C<$entries> array reference (or L<$ENTRIES|"$ENTRIES">, if omitted). You can apply some changes to a set of entries using the L<apply|apply> command, and see the changes using the L<changes|changes> command.
+
+=cut
+
+sub changes(;$) {
+	my $entries = shift || $Globals->{ENTRIES}{VALUE};
+
+	_haveentries($entries);
+
+	my $nbchanges = 0;
+
+	map {
+		my $changes = $_->{changes};
+		if (defined($changes) and scalar(@$changes)) {
+			$nbchanges++;
+			printf {$Output->{FILEHANDLE}} ('=' x 40 . qq{\n%s\n}, $_->dn);
+			my @changes = (@$changes);
+			while(scalar(@changes)) {
+				my $action = shift @changes;
+				my $data = shift @changes;
+				my $attributes = join(',', map {"'$_'"} @{$data->[1]});
+
+				if ($action eq 'add') {
+					printf {$Output->{FILEHANDLE}} (qq{\t>>> Add attribute '%s' with values: %s\n}, $data->[0], $attributes);
+				} elsif ($action eq 'replace') {
+					printf {$Output->{FILEHANDLE}} (qq{\t>>> Replace attribute '%s' with values: %s\n}, $data->[0], $attributes);
+				} elsif ($action eq 'delete') {
+					printf {$Output->{FILEHANDLE}} (qq{\t>>> Delete attribute '%s'\n}, $data->[0]);
+				} else {
+					printf {$Output->{FILEHANDLE}} (qq{\t>>> Don't know the action '%s'\n}, $action);
+				}
+			}
+		}
+	} @$entries;
+
+	if ($nbchanges) {
+		print STDERR '=' x 40 . "\n$nbchanges entries to commit.\n";
+	} else {
+		print STDERR "No entries to commit.\n";
+	}
+}
+
+=head3 commit
+
+B<Synopsis>: C<commit [$entries]>
+
+Commit local changes to the server. You can modify the a set of entries using the L<apply|apply> command.
+
+=cut
+
+sub commit(;$) {
+	my $entries = shift || $Globals->{ENTRIES}{VALUE};
+
+	_haveentries($entries) or return 0;
+
+	my $result;
+	my ($updcounter, $errcounter) = (0,0);
+	map {
+		$result = $_->update($Globals->{LDAPCONN}{VALUE});
+		if ($result->is_error) {
+			unless ($result->code == Net::LDAP::Constant::LDAP_LOCAL_ERROR()
+				and $result->error eq 'No attributes to update') {
+				printf STDERR qq{LDAP Error updating entry '%s'. Code:%s. Message:%s\n},
+					$_->dn, $result->code, $result->error;
+				$errcounter++;
+			}
+		} else {
+			$updcounter++;
+		}
+	} @$entries;
+
+	printf STDERR qq{Changed %s entries of %s. %s errors.\n}, $updcounter, scalar(@$entries), $errcounter;
+	return(not $errcounter);
+}
+
+
+=head2 $ENTRIES manipulation
+
+=head3 nbentries
+
+B<Synopsis>: C<nbentries [$entries]>
+
+Display the number of entries in C<$entries> (or the global variable L<$ENTRIES|"$ENTRIES"> if omitted).
+
+=cut
+
+sub nbentries {
+	my $entries = shift || $Globals->{ENTRIES}{VALUE};
+
+	_haveentries($entries) or return 0;
+
+	my $nbentries = scalar(@$entries);
+	print {$Output->{FILEHANDLE}} "$nbentries\n";
+	return $nbentries;
+}
+
+
+=head3 append
+
+B<Synopsis>: C<append>
+
+The entries found in a search will in future be appended to the L<$ENTRIES|"$ENTRIES"> variable instead of replacing any existing values.
+Returns 0 if the previous mode was "append" and 1 if the previous mode was "noappend".
+
+=cut
+
+sub append {
+	my $ret = not $Globals->{_APPENDRESULTS}{VALUE};
+	$Globals->{_APPENDRESULTS}{VALUE} = 1;
+	return $ret;
+}
+
+
+=head3 noappend
+
+B<Synopsis>: C<append>
+
+The entries found in a search will replace the values on the L<$ENTRIES|"$ENTRIES"> variable, instead of being appended.
+Returns 1 if the previous mode was "append" and 0 if the previous mode was "noappend".
+
+=cut
+
+sub noappend {
+	my $ret = $Globals->{_APPENDRESULTS}{VALUE};
+	$Globals->{_APPENDRESULTS}{VALUE} = 0;
+	return $ret;
+}
+
+
+=head3 exclude
+
+B<Synopsis>: C<exclude [$entries] 'E<lt>regexpE<gt>'>
+
+Remove the entries whose DNs match the given regexp from the C<$entries> list (or the global variable L<$ENTRIES|"$ENTRIES"> if omitted).
+
+=cut
+
+sub exclude($;$) {
+	my ($entries, $regexp);
+
+	if (scalar(@_) == 1) {
+		$entries = $Globals->{ENTRIES}{VALUE};
+		_haveentries($entries) or return undef;
+		$regexp = shift;
+	} elsif (scalar(@_) == 2) {
+		($entries, $regexp) = @_;
+	} else {
+		print STDERR "Usage error.\n";
+		return undef;
+	}
+
+	my $counter = 0;
+	for (my $i = 0; $i < scalar(@$entries); $i++) {
+		if ($entries->[$i]->dn =~ /$regexp/i) {
+			print STDERR $entries->[$i]->dn . "\n";
+			splice(@$entries, $i, 1);
+			$i--; $counter++;
+		}
+	}
+
+	if ($counter) {
+		printf STDERR "-----\n%d %s excluded.\n", $counter, ($counter > 1 ? 'entries' : 'entry');
+	} else {
+		printf STDERR ">> No entries matched the regular expression.\n";
+	}
+	return $entries;
+}
+
+
+=head1 FILES
+
+=over 8
+
+=item * F<~/.ldapshrc>
+
+Any Perl code you want. It will be "eval"ed in the script context.
+So you can write functions in it and call them from the shell.
+
+This is I<very> useful for creating aliases. Here is an example of what you can put
+on your F<.ldapshrc>:
+
+  sub ads {
+    $CONNPARAMS{SERVER} = 'ads.company.com';
+    $CONNPARAMS{BINDDN} = '.. blabla ...';
+    $CWD='dc=linkvest,dc=com';
+    connect;
+    bind;
+  }
+
+So, in your shell you can type "ads" and get connected to a specific server.
+Additionally, you could invoke B<ldapsh> as C<ldapsh ads> to call the function
+straight away.
+
+Remember: you put in this file Perl code. So you can do whatever you want!!!
+
+=item * F</etc/ldapshrc>
+
+Same as F<$HOME/.ldaprc>, only system-wide.
+
+=item * F<$HOME/.ldapsh_history>
+
+For internal use. The shell saves the history in this file (provided you have
+B<Term::ReadLine::Gnu> installed) when you quit your shell, and loads it when you
+start the shell again.
+
+=back
+
+=head1 VARIABLES
+
+=head2 $COLUMNS
+
+The width of the output device in characters (decimal string).
+Its initial value is obtained from the environment or the B<Term::Size> module,
+with a default of 80 characters.
+
+=head2 $CONNPARAMS-E<gt>{SERVER}
+
+The name of the server to connect to when the L<connect|connect> function will be called.
+
+=head2 $CONNPARAMS-E<gt>{BINDDN}
+
+The DN to bind with when the L<bind|bind> function will be called.
+
+=head2 $CONNPARAMS-E<gt>{PORT}
+
+The port to connect to when the L<connect|connect> function will be called. 389 by default.
+
+=head2 $CONNPARAMS-E<gt>{LDAPVERSION}
+
+The protocol version to use (3 by default).
+
+=head2 $CONNPARAMS-E<gt>{SSL}
+
+Set this to 'tls' if you connect to the standard LDAP port and use
+Transport Layer Security for encryption.  Set this to 'ssl' if you
+want to use SSL to a dedicated port on the server.  Any other value,
+including not setting this at all, will get you an unencrypted
+connection.
+
+Currently, no certificate verification is done.
+
+=head2 $CWD
+
+The I<current working directory> in the LDAP Directory Tree. You can change the
+I<current working directory> (relatively with the L<cd|cd> command, or absolutely
+using this variable).
+
+=head2 $DNSEP
+
+String used to separate DNs on a line (see L<ls|ls>).
+
+=head2 $EDITOR
+
+The default editor used when the L<vi|vi> command is called. By default, this is obtained
+from the environment variable $VISUAL (if set) or $EDITOR (if set) or otherwise "vi".
+
+=head2 $ENTRIES
+
+The buffer of entries (B<Net::LDAP::Entry>). It's an array reference. Contains the last entries got with the
+commands L<ls|ls>, L<cat|cat>, L<search|search>...
+
+=head2 $G
+
+A global variable you can use as you want. As we use the C<strict> module, you cannot declare variables in the shell without using C<my>. And if you use C<my>, the scope of your variable is the line you entered, so your variable will not live until the next command you type.
+
+Using this variable you can store objects, scalars, everything you want.
+
+B<Example>: C<$G = $ENTRIES>
+
+Will save the entries found during the last search, so you can use this later. You only have one global variable for your own use, so if you need more than one, set this variable to a hash:
+
+B<Example>: C<$G = {ENTRIES => $ENTRIES, PWD => $PWD}; $G->{TIME} = time();>
+
+=head2 $LDAPCONN
+
+Contains the B<Net::LDAP> handler. Use it only if you know what you are doing...
+
+=head2 $OLDWD
+
+The immediate past I<current working directory>, updated by the L<cd|cd> and L<setdn|setdn> commands.
+
+=head2 $PROMPT
+
+The prompt template. It will be "eval"ed so will do variable substitution.
+You can use the ${APP} variable to display "**" when you are in "append mode"
+(see L<append|append> and L<noappend|noappend>).
+
+Example: $PROMPT = '${APP}\[LDAP @ $CONNPARAMS-E<gt>{SERVER}] $CWD E<gt> '
+
+=head1 SEE ALSO
+
+=over 8
+
+=item * The excellent B<Net::LDAP> Perl module written by Graham Barr (see E<lt>http://perl-ldap.sourceforge.net/E<gt>).
+
+=item * The B<Term::ReadLine::Gnu> module (see E<lt>http://cnswww.cns.cwru.edu/php/chet/readline/rltop.htmlE<gt>).
+
+=back
+
+Z<>
+
+=head1 AUTHORS
+
+By chronological contribution:
+
+=over 8
+
+=item * Rafael Corvalan (E<lt>rcorvalan@users.sourceforge.netE<gt>)
+
+=item * Peder O. Klingenberg
+
+=item * James Devenish
+
+=back
+
+=head1 FEEDBACK
+
+Please report bugs to the mailing list E<lt>ldapsh-devel@lists.sourceforge.netE<gt> or through E<lt>http://sourceforge.net/tracker/?group_id=54115&atid=472731E<gt>.
+
+Send comments and suggestions to the above mailing list.
+
+Post Feature Requests to E<lt>http://sourceforge.net/tracker/?group_id=54115&atid=472734E<gt>.
+
+
+=head1 COPYRIGHT
+
+This program is free software; you can redistribute it and/or modify it under the same terms as Perl itself.
+If you have some enhancements or bug corrections, I'd appreciate if you send them to me so I can improve the original version.
+
+=cut
+
+package Tie::Scalar::Hash;
+
+use strict;
+use vars qw(@ISA);
+
+@ISA = qw(Tie::Scalar);
+
+sub TIESCALAR {
+	my $self = shift;
+	my $hash = shift;
+	my $varname = shift;
+
+	$hash->{$varname} = undef unless exists $hash->{$varname};
+	bless {Hash=>$hash, Key=>$varname}, $self;
+}
+
+
+sub FETCH {
+	my $self = shift;
+	my $var = $self->{Hash}->{$self->{Key}};
+	if ($var->{RIGHTS} =~ /r/i) {
+		return $var->{VALUE};
+	} else {
+		print STDERR "You have no rights to fetch this value.\n";
+		return undef;
+	}
+}
+
+
+sub STORE {
+	my $self = shift;
+	my $value = shift;
+	my $var = $self->{Hash}->{$self->{Key}};
+	if ($var->{RIGHTS} =~ /w/i) {
+		return($var->{VALUE} = $value);
+	} else {
+		print STDERR "You have no rights to set this value.\n";
+		return undef;
+	}
+}
+
+
+package ldapsh;
+
+_Init();
+
+if ($PSH_SUPPORT) {
+	package Psh::Strategy::Ldapsh::Perlfunc;
+
+	use strict;
+	use vars qw(@ISA);
+
+	require Psh::Strategy::Perlfunc;
+	@ISA=('Psh::Strategy::Perlfunc');
+
+	sub applies {
+		my @words= @{$_[2]};
+		if ((Psh::PerlEval::protected_eval("defined(&{'ldapsh::$words[0]'})"))[0]) {
+			@{$_[2]}[0] = "ldapsh::@{$_[2]}[0]";
+		}
+		else {
+			return Psh::Strategy::Perlfunc::applies($_);
+		}
+		
+	}
+
+	sub variable_expansion {
+		# Adapted from Gregor N. Purdy's Psh::PerlEval.pm
+		my ($arref) = @_;
+		my @retval  = ();
+		my $word;
+
+		for $word (@{$arref}) {
+			if ($word =~ /^\'(.*)\'/) {
+				push @retval, $1;
+			}
+			else {
+				no strict qw(vars);
+				local $SIG{__WARN__} = sub {};
+
+				my $expr = $word;
+				$expr = "\"$expr\"" unless $expr =~ /^[\$"\']/;
+				$expr =~ s/\\/\\\\/g;
+
+				my $val = eval(eval('$Psh::eval_preamble')." $expr");
+				if ($@) {
+					if ($word =~ /^\"(.*)\"/) {
+						push @retval, $1;
+					}
+					else {
+						push @retval, $word;
+					}
+				}
+				else {
+					push @retval, $val;
+				}
+			}
+		}
+		return @retval;
+	}
+
+	sub execute {
+		my @words= @{$_[2]};
+		if ($words[0] =~ "^ldapsh::") {
+			# Adapted from Gregor N. Purdy's Psh::Strategy::Built_in.pm
+			no strict 'refs';
+			my $coderef = *{$words[0]};
+			shift @words;
+			# Should we be using protected_eval?
+			@words = variable_expansion(\@words);
+			return (1,sub { &{$coderef}(@words); }, [], 0, undef );
+		}
+		else {
+			return Psh::Strategy::Perlfunc::execute($_);
+		}
+	}
+
+	package Psh::Strategy;
+
+	remove("built_in");
+	#remove("executable");
+	#remove("eval");
+	remove("perl");
+	remove("perlfunc");
+
+	my $obj = Psh::Strategy::Ldapsh::Perlfunc->new();
+	add $obj;
+}
+
+package ldapsh;
+
+$_ = "@ARGV";
+
+# Note: this loop will be executed once before the prompt is shown.
+# This is to support command-line arguments and will occur whether
+# or not any were given.
+while (1) {
+	last unless defined($_);
+
+	if ($PSH_SUPPORT) {
+		Psh::_evl(eval {Psh::Parser::parse_line($_) }) if $_;
+	}
+	else {
+
+	s/^\s+//;
+	s/\s+$//;
+	if (s/^!//) {
+		system($_);
+		next;
+	}
+
+	# The line below will quote everything following some commands.
+	# Purpose: type "cd ou=Users" without a Perl Compiler warning
+	# complaining that "ou=Users" it's an illegal variable set, and
+	# that uses a bareword....
+	s/^(cd|acd|setdn|pushd|lcd|help|which|redir|sink)\s+((?:[^'"].*)?[^'"])$/$1 "$2"/;
+
+	# The line below will quote some barewords such as "-l", "-a" etc...
+	# It's not perfect, but simple
+	while (s/([\s,])(-\w|\.)([\s,]|$)/$1'$2'$3/g) {};
+
+
+	# This will check for "<ldapsh command> ;| <shell command>" usage
+	# If so, we do a temporary output redirection
+	my $previous;
+	if (s/;\s*([|>][\s\w\d_\/.-]+)//) {
+		$previous = redir($1);
+	}
+
+	eval() || print STDERR $@;
+
+	# If we temporary redirected the output, come back and close the
+	# temporary filehandle
+	$Output = $previous if ($previous);
+	}
+
+	my $APP = $Globals->{_APPENDRESULTS}{VALUE} ? '** ' : '';
+	my $P = eval('return("' . $Globals->{PROMPT}{VALUE} . '")');
+	print $@ unless defined $P;
+	$_ = $Term->readline($P);
+}
+
+print "\n";
+_WriteHistory();
