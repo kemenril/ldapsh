@@ -1,0 +1,70 @@
+#A slightly more complicated ldapshrc which defines some shared configuration
+# among multiple different LDAP systems.  It also binds anonymously on initial
+# connect, and defines a command "auth" to re-bind as a user.
+
+
+sub ssli {
+	$CONNPARAMS->{SSL}	= 'ssl';
+	$CONNPARAMS->{PORT}	= 636;
+}
+
+sub cleari {
+	$CONNPARAMS->{SSL}	= 0;
+	$CONNPARAMS->{PORT}	= 389;
+}
+
+sub bindu {
+	if (defined $_[0]) {
+		$CONNPARAMS->{BINDDN}	= $_[0];
+	} else {
+		$CONNPARAMS->{BINDDN}	= '';
+	}
+}
+
+sub altprod {
+	cleari;
+	bindu;
+	$CONNPARAMS->{SERVER}	= 'altprod';
+	$CWD			= 'dc=proddom,dc=com';
+	connect;
+	bind;
+}
+
+sub prodmain {
+	ssli;
+	bindu;
+	$CONNPARAMS->{SERVER}	= 'proddom-ldap';
+	$CWD			= 'dc=proddom,dc=com';
+
+	connect;
+	bind;
+}
+
+sub prodts {
+	ssli;
+	bindu;
+	$CONNPARAMS->{SERVER}	= 'proddom-ldap';
+	$CWD			= 'dc=timestamp';
+}
+
+
+sub testdom {
+	ssli;
+	bindu;
+	$CONNPARAMS->{SERVER}	= 'testdom-ldap';
+	$CWD			= 'dc=testdom,dc=com';
+	connect;
+	bind;
+}
+
+
+sub auth {
+	if ($CONNPARAMS->{SERVER} =~ /test/) {
+		bindu("cn=Manager,dc=testdom,dc=com");
+	} else {
+		bindu("cn=Manager,dc=proddom,dc=com");
+	}
+	connect;
+	bind;
+}
+
