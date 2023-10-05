@@ -15,7 +15,7 @@ Devel::Symdump
 
 Term::ReadLine::GNU
 
-Psh (Similarly unmaintained, but patched to work on current systems, and available in another of my Github repositories.)
+Psh (Similarly unmaintained, but patched to work on current systems, and available at https://github.com/kemenril/psh)
 
 
 ------------------------------------------------------------------------------
